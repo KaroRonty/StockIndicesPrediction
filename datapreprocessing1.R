@@ -2,22 +2,28 @@ library(dplyr)
 library(readxl)
 library(purrr)
 library(xlsx)
+library(openxlsx) # easy multiple sheet connectivity
 library(tsibble)
 library(magrittr)
 library(lubridate)
 
 library(rio) # mass important of all xlsx sheets
+library(fs)
+library(janitor) # name formatting
 
 
 # EMERING MARKETS MERGINGS
 
+length_ts_dm <- length(ts(start = c(1969,12), end = c(2020,8), frequency = 12))
 length_ts_em <- length(ts(start = c(1987,12), end = c(2020,8), frequency = 12))
 
-read.excel <- function(path, name) { # files need to be separated by currency to work
+read.excel <- function(path, name, l) { # files need to be separated by currency to work
   files <- list.files(path = paste0(getwd(),path), pattern = "*.xls", full.names = T)
-  dat <- map_dfc(files, read_excel, skip = 6, n_max = length_ts_em) # include cutoff point
+  dat <- map_dfc(files, read_excel, skip = 6, n_max = l) # include cutoff point
   assign(paste(name), dat, envir = .GlobalEnv)
 }
+
+
 
 date <- tsibble(
   mth = yearmonth("1950 Jan") + 0:length(ts(start = c(1950,1), end = c(2020,7), frequency = 12))
@@ -25,11 +31,11 @@ date <- tsibble(
 
 # 
 
-read.excel("/07_DM/USD", "dm_usd")
-read.excel("/07_DM/Local", "dm_loc")
+read.excel("/07_DM/USD", "dm_usd", length_ts_dm)
+read.excel("/07_DM/Local", "dm_loc", length_ts_dm)
 
-read.excel("/08_EM/USD", "em_usd") 
-read.excel("/08_EM/USD", "em_loc")
+read.excel("/08_EM/USD", "em_usd", length_ts_em) 
+read.excel("/08_EM/USD", "em_loc", length_ts_em)
 
 clean.data <- function(dr, name) {
   dr %>%  mutate(mth = Date...1) %>% # create copy of date column with new name 
@@ -42,8 +48,6 @@ clean.data <- function(dr, name) {
   
   assign(paste(name), dr, envir = .GlobalEnv) # create df
   # write.xlsx(paste(name), paste0(name,".xls")) # save as .xls
-  
-  
 }
 
 clean.data(dm_usd, "dm_usd")
@@ -64,7 +68,7 @@ write.xlsx(usd, "usd.xls")
 # CAPE adjustments
 
 cape <- read.csv(paste0(getwd(),"/02_CAPE/cape.csv"), nrow = 465) %>% 
-  mutate(mth = as.Date(cape$ï..date, origin = "1899-12-30")) %>% # create copy of date column with new name
+  mutate(mth = as.Date(cape$...date, origin = "1899-12-30")) %>% # create copy of date column with new name
   select(-contains("...")) %>% # delete date duplicates
   select(mth, everything()) %>% # change order
   mutate(mth = tsibble::yearmonth(mth)) %>% as_tsibble(index = mth)  # transform date fo tsibble format
@@ -73,8 +77,166 @@ cape <- full_join(date, cape, by = c("mth" = "mth")) # join with full-scale date
 write.xlsx(cape, "cape.xls")
 
 # MACRO VARIABLES
-macro <- import_list("macro_clean.xlsx")
+
+
+
+path_ma <- "01_Macro Variables/macro_clean.xlsx"
+
+mak <- path_ma %>% 
+  excel_sheets() %>% 
+  purrr::set_names() %>% 
+  map(read_excel,
+      path = path_ma, col_names = T)
+
 list2env(macro, .GlobalEnv)
+
+
 
 # in case we need to important stock prices from DS as well
 
+path_si <- "03_Stock Indices/stock_indices_clean.xlsx"
+
+mad <- path_si %>%
+  excel_sheets() %>%
+  head(38) %>% 
+  purrr::set_names() %>%
+  map(read_excel,
+      path = path_si, col_names = F)
+
+dbR <- sapply(mad, simplify = FALSE, USE.NAMES = TRUE, FUN = function(i) { 
+  # USE.NAMES keeps the names of the nested df, simplifies the list structure (instead of simplifying)
+  
+  dt <- i %>% slice(-c(1:5,7)) %>%
+    row_to_names(row_number = 1) %>% 
+    clean_names() %>% 
+    select(-contains("na")) %>% 
+    mutate_if(is.character, as.numeric) %>% 
+    mutate(date = as.Date(date, origin = "1899-12-30")) %>% 
+    mutate(date = tsibble::yearmonth(date)) %>% 
+    as_tsibble(index = date)
+  return(dt)
+})
+
+
+loc <- read_excel("loc.xls")
+
+# OECD data transformation
+macro <- list()
+
+
+# exchange rates
+macro$exr <- read_excel("01_Macro Variables/macro.xlsx", sheet = "exrates", col_names = F) %>% 
+  slice(-1) %>% 
+  row_to_names(1) %>% 
+  mutate_if(is.character, as.numeric) %>% 
+  mutate(date = as.Date(Country, origin = "1900-01-01")) %>% 
+  mutate(date = tsibble::yearmonth(date)) %>% 
+  select(-Country) %>% 
+  select(date, everything()) %>% 
+  as_tsibble(index = date)
+
+# cpi
+
+macro$cpi <- read.csv("01_Macro Variables/cpi.csv") %>% 
+  clean_names() %>% 
+  pivot_wider(., names_from = i_country, values_from = value) %>% 
+  mutate(date = tsibble::yearmonth(time)) %>% 
+  select(-time, -time_2) %>% 
+  select(date, everything()) %>% 
+  as_tsibble(index = date)
+
+# unemployment rate (NS & SA)
+
+f_unr <- c("ST", 
+           "STSA")
+
+n_unr <- c("unr_ns", "unr_sa")
+
+unr <- lapply(f_unr, function(i) {
+  dt <- read.csv("01_Macro Variables/unr.csv") %>% 
+    clean_names() %>% 
+    filter(measure == i) %>% 
+    pivot_wider(., names_from = i_country, values_from = value) %>% 
+    mutate(date = tsibble::yearmonth(time)) %>% 
+    select(-time, -time_2, -measure) %>% 
+    select(date, everything()) %>% 
+    as_tsibble(index = date)
+  return(dt)
+})
+names(unr) <- n_unr
+
+# GDP (NS & SA)
+
+f_gdp <- c("CQR", 
+           "CQRSA")
+
+n_gdp <- c("gdp_ns", "gdp_sa")
+
+gdp <- lapply(f_gdp, function(i) {
+  dt <- read.csv("01_Macro Variables/gdp.csv") %>% 
+    clean_names() %>% 
+    filter(measure == i) %>% 
+    pivot_wider(., names_from = i_country, values_from = value) %>% 
+    mutate(date = tsibble::yearquarter(time)) %>% 
+    select(-time, -period, -measure) %>% 
+    select(date, everything()) %>% 
+    as_tsibble(index = date)
+  return(dt)
+})
+names(gdp) <- n_gdp
+
+# Indicators
+
+f_sen <- c("Normalised (CLI)", 
+           "OECD Standardised BCI, Amplitude adjusted (Long term average=100), sa", 
+           "OECD Standardised CCI, Amplitude adjusted (Long term average=100), sa")
+
+n_sen<- c("cli", "bci", "cci")
+
+sen <- lapply(f_sen, function(i) {
+  dt <- read.csv("01_Macro Variables/sen.csv") %>% 
+    clean_names() %>% 
+    filter(i_subject == i) %>% 
+    pivot_wider(., names_from = country, values_from = value) %>% 
+    mutate(date = tsibble::yearmonth(time)) %>% 
+    select(-time, -time_2, -i_subject) %>% 
+    select(date, everything()) %>% 
+    as_tsibble(index = date)
+  return(dt)
+})
+
+names(sen) <- n_sen
+
+
+# MFI (SA) # to be simplified
+
+f_mfi <- c("Narrow Money (M1) Index, SA", 
+           "Broad Money (M3) Index, SA", 
+           "Long-term interest rates, Per cent per annum", 
+           "Short-term interest rates, Per cent per annum", 
+           "Immediate interest rates, Call Money, Interbank Rate, Per cent per annum")
+
+n_mfi <- c("m1", "m3", "ltir", "stir", "prate")
+
+mfi <- lapply(f_mfi, function(i) {
+  dt <- read.csv("01_Macro Variables/mfi.csv") %>% 
+    clean_names() %>% 
+    filter(i_subject == i) %>% 
+    pivot_wider(., names_from = country, values_from = value) %>% 
+    mutate(date = tsibble::yearmonth(time)) %>% 
+    select(-time, -time_2, -i_subject) %>% 
+    select(date, everything()) %>% 
+    as_tsibble(index = date)
+  return(dt)
+})
+
+names(mfi) <- n_mfi
+
+
+
+macro <- do.call(c, list(macro, gdp, unr, mfi, sen))
+rm(gdp, unr, mfi, sen)
+
+write.xlsx(macro, file = "macro.xlsx", keepNA = T) # write list of tsibbles to multiple-sheet excel
+
+# date homogolation left
