@@ -240,21 +240,101 @@ rm(mfi, sen, unr, gdp)
 
 
    
-# date homologation
+# date and zone homologation
 
 dat <- tsibble(
-  mth = yearmonth("1950 Jan") + 0:length(ts(start = c(1950,1), end = c(2020,7), frequency = 12))
-)
+  mth = yearmonth("1950 Jan") + 0:length(ts(start = c(1950,1), end = c(2020,7), frequency = 12)))
+
+zones <- c("G7", "G20", "Euro area (19 countries)", "European Union â€“ 27 countries (from 01/02/2020)", 
+           "OECD - Europe", "OECD - Total", "Major Five Asia", "Four Big European", "NAFTA", "OECD + Major Six NME")
 
 macro_m <- sapply(macro_m, simplify = FALSE, USE.NAMES = TRUE, FUN = function(i) { 
   # USE.NAMES keeps the names of the nested df, simplifies the list structure (instead of simplifying)
   cx <- i
   cx <- full_join(dat, i, by = c("mth" = "date")) %>% # join with full scale data
-    filter_index(~ "2020 Aug")
+    filter_index(~ "2020 Aug") %>% 
+    select(-any_of(zones)) # cleaning unnecessary zones
   return(cx)
 })
+
+macro_q <- sapply(macro_q, simplify = FALSE, USE.NAMES = TRUE, FUN = function(i) { 
+  # USE.NAMES keeps the names of the nested df, simplifies the list structure (instead of simplifying)
+  cx <- i %>% filter_index(~ "2020 Aug") %>% 
+    select(-any_of(zones)) # cleaning unnecessary zones
+  return(cx)
+}) 
+
 
 write.xlsx(macro_m, file = "macro_m.xlsx", keepNA = T) # write list of tsibbles to multiple-sheet excel
 write.xlsx(macro_q, file = "macro_q.xlsx", keepNA = T) # same for quarterly data
 
+# graphs for analysis:
+
+plot_list_q <- list()
+plot_list_m <- list()
+
+plot_list_q$gdp_ns <- macro_q$gdp_ns %>% # gdp na
+  pivot_longer(Australia:`United Kingdom`)
+
+plot_list_q$gdp_sa <- macro_q$gdp_sa %>% # gdp sa
+  pivot_longer(Australia:Turkey)
+
+plot_list_m$cpi <- macro_m$cpi %>% # cpi
+  pivot_longer(Denmark:Austria) 
+
+plot_list_m$unr_sa <- macro_m$unr_sa %>% # unr sa
+  pivot_longer(Australia:Colombia) 
+
+plot_list_m$unr_ns <- macro_m$unr_ns %>% # und ns
+  pivot_longer(Australia:Colombia) 
+
+plot_list_m$m1 <- macro_m$m1 %>% # m1
+  pivot_longer(Australia:`Costa Rica`) 
+
+plot_list_m$m3 <- macro_m$m3 %>% # m3
+  pivot_longer(Australia:`Costa Rica`) 
+
+plot_list_m$ltir <- macro_m$ltir %>% # long term interest rates / bond yields
+  pivot_longer(Australia:Estonia) 
+
+plot_list_m$stir <- macro_m$stir %>% # stir
+  pivot_longer(Australia:India) 
+
+plot_list_m$prate <- macro_m$prate %>% # policy rate
+  pivot_longer(Australia:`Costa Rica`) 
+
+plot_list_m$cli <- macro_m$cli %>% # cli
+  pivot_longer(Australia:Iceland) 
+
+plot_list_m$bci <- macro_m$bci %>% # bci
+  pivot_longer(Australia:Israel) 
+
+plot_list_m$cci <- macro_m$cci %>% # cci
+  pivot_longer(Australia:Russia) 
+
+plot.to.plots.q <- function(i){
+  dt <- i %>% 
+    ggplot(aes(x = date, y = value, color = name)) +
+    geom_line() +
+    # ggtitle(print(i)) +
+    scale_y_log10() +
+    facet_wrap(~name, scales = "free") +
+    theme_minimal() +
+    theme(legend.position = "none")
+  # return(dt)
+}
+
+plot.to.plots.m <- function(i) {
+  dt <- i %>% 
+    ggplot(aes(x = mth, y = value, color = name)) +
+    geom_line() +
+    # ggtitle(paste(print(i))) +
+    scale_y_log10() +
+    facet_wrap(~name, scales = "free") +
+    theme_minimal() +
+    theme(legend.position = "none")
+}
+
+lapply(plot_list_q, plot.to.plots.q)
+lapply(plot_list_m, plot.to.plots.m)
 
