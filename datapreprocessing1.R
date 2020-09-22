@@ -100,12 +100,11 @@ mak <- path_ma %>%
 
 
 # in case we need to important stock prices from DS as well
-
 path_si <- "03_Stock Indices/stock_indices_clean.xlsx"
 
 mad <- path_si %>%
   excel_sheets() %>%
-  head(38) %>% 
+  head(32) %>% 
   purrr::set_names() %>%
   map(read_excel,
       path = path_si, col_names = F)
@@ -120,10 +119,23 @@ sti <- sapply(mad, simplify = FALSE, USE.NAMES = TRUE, FUN = function(i) {
     mutate_if(is.character, as.numeric) %>% 
     mutate(date = as.Date(date, origin = "1899-12-30")) %>% 
     mutate(date = tsibble::yearmonth(date)) %>% 
-    as_tsibble(index = date)
+    as_tsibble(index = date) %>% 
+    slice(-849)
   return(dt)
 })
 
+
+# replace names for stock indices with countries they belong to
+ccc <- read_excel(path = path_si, sheet = 33) %>% # load the sheet with names
+  clean_names() %>% 
+  mutate(country = toupper(country)) %>% 
+  mutate(country = str_replace_all(country, "\\s", "_"))
+  
+a <- names(sapply(sti, names)) %>% as.data.frame() # get names from sti
+a <- left_join(a, ccc, by = c("." = "index_name")) # join
+names(sti) <- a[,3] # rewrite names to countries
+
+write.xlsx(sti, "Data/sti.xls", keepNA = T)
 
 
 # OECD data transformation
