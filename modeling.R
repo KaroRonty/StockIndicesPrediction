@@ -62,6 +62,11 @@ to_model <- capes_long %>%
 training <- to_model %>% 
   filter(date < yearmonth(split_date))
 
+
+leakage_set <- to_model %>% 
+  filter(date >= yearmonth(split_date),
+         date < yearmonth(leakage_end_date))
+
 test <- to_model %>% 
   filter(date >= yearmonth(leakage_end_date))
 
@@ -122,12 +127,14 @@ fcast_acc <- acc_no_leakage %>% arrange(MAE)
 fcast %>%
   filter(.model == "ARIMA") %>% 
   # filter(country == "AUSTRALIA") %>% 
-  autoplot(level = NULL) +
-  autolayer(test %>% 
+  autoplot(color = "red") +
+  autolayer(bind_rows(training, leakage_set, test) %>% 
               filter(country %in% fcast$country), 
             cagr_10_year,
             color = "black") +
   facet_wrap(~ country) + 
+  geom_vline(xintercept = as.Date(split_date), color = "red", linetype = "dashed") +
+  geom_vline(xintercept = as.Date(leakage_end_date), color = "red", linetype = "dashed") +
   theme_minimal() +
   theme(legend.position = "bottom")
 
