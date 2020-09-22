@@ -44,26 +44,33 @@ clean.data <- function(dr, name) {
     mutate(mth = tsibble::yearmonth(mth)) %>% as_tsibble(index = mth) -> dr # transform date fo tsibble format
   
   names(dr) <- gsub(pattern = "*Standard.*", replacement = "", x = names(dr)) # delete name parts
-  dr <- full_join(date, dr, by = c("mth" = "mth")) # join with full-scale date data
   
   assign(paste(name), dr, envir = .GlobalEnv) # create df
   # write.xlsx(paste(name), paste0(name,".xls")) # save as .xls
 }
 
-clean.data(dm_usd, "dm_usd")
+clean.data(dm_usd, "dm_usd") 
+dm_usd <- full_join(dat, dm_usd, by = c("mth" = "mth"))
+
 clean.data(dm_loc, "dm_loc")
+dm_loc <- full_join(dat, dm_loc, by = c("mth" = "mth"))
+
 clean.data(em_usd, "em_usd")
+em_usd <- full_join(dat, em_usd, by = c("mth" = "mth"))
+
 clean.data(em_loc, "em_loc")
+em_loc <- full_join(dat, em_loc, by = c("mth" = "mth"))
+
 
 # create one file per currency
-loc <- cbind(dm_loc, em_loc, fm_loc) %>%  
-  select(-c(which(colnames(.) == "mth"))[2:3]) # delete doubled date columns
-write.xlsx(loc, "loc.xls")
+loc <- cbind(dm_loc, em_loc) %>%  
+  select(-c(which(colnames(.) == "mth"))[2]) # delete doubled date columns
+write.xlsx(loc, "loc2.xls")
 
 
-usd <- cbind(dm_usd, em_usd, fm_usd) %>% 
-  select(-c(which(colnames(.) == "mth"))[2:3])
-write.xlsx(usd, "usd.xls")
+usd <- cbind(dm_usd, em_usd) %>% 
+  select(-c(which(colnames(.) == "mth"))[2])
+write.xlsx(usd, "usd2.xls")
 
 # CAPE adjustments
 
