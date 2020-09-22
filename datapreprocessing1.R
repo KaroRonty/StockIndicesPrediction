@@ -135,7 +135,7 @@ a <- names(sapply(sti, names)) %>% as.data.frame() # get names from sti
 a <- left_join(a, ccc, by = c("." = "index_name")) # join
 names(sti) <- a[,3] # rewrite names to countries
 
-write.xlsx(sti, "Data/sti.xls")
+write.xlsx(sti, "Data/sti.xls", keepNA = T)
 
 
 # OECD data transformation
