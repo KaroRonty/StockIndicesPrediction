@@ -123,8 +123,8 @@ fcast %>%
   filter(.model == "ARIMA") %>% 
   # filter(country == "AUSTRALIA") %>% 
   autoplot(level = NULL) +
-  autolayer(test, # %>% 
-              # filter(country == "AUSTRALIA"), 
+  autolayer(test %>% 
+              filter(country %in% fcast$country), 
             cagr_10_year,
             color = "black") +
   facet_wrap(~ country) + 
