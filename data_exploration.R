@@ -6,6 +6,45 @@ library(tsibble)
 library(ggplot2)
 library(lubridate)
 
+# Function for getting the first date or amount of years for each country
+get_first_date <- function(long_data, predictor, years_or_min){
+  long_data %>% 
+    rename(predictor = 3) %>% 
+    mutate(dates = ifelse(!is.na(predictor), date, NA)) %>% 
+    group_by(country) %>% 
+    summarise(min = as.Date(min(dates, na.rm = TRUE), origin = "1970-01-01"),
+              max = as.Date(max(dates, na.rm = TRUE), origin = "1970-01-01"),
+              # Without the leakage set
+              years = interval(min, max) / years(1) - 10,
+              min_yearmonth = yearmonth(min)) %>% 
+    select(country, !!predictor := !!years_or_min)
+}
+
+# First date
+availability_min <- capes_long %>% 
+  get_first_date("cape", "min") %>% 
+  full_join(prices_local_long %>% 
+              get_first_date("cagr_10_year", "min")) %>% 
+  full_join(rate_10_year_long %>% 
+              get_first_date("rate_10_year", "min")) %>% 
+  full_join(unemployment_long %>% 
+              get_first_date("unemployment", "min")) %>% 
+  mutate_at(vars(-country), function(x) ifelse(x < 0, NA, x)) %>% 
+  mutate(mean = rowMeans(across(-country), na.rm = TRUE)) %>% 
+  mutate_if(is.numeric, ~as.Date(.x, origin = "1970-01-01"))
+
+# Amount of years
+availability_years <- capes_long %>% 
+  get_first_date("cape", "years") %>% 
+  full_join(prices_local_long %>% 
+              get_first_date("cagr_10_year", "years")) %>% 
+  full_join(rate_10_year_long %>% 
+              get_first_date("rate_10_year", "years")) %>% 
+  full_join(unemployment_long %>% 
+              get_first_date("unemployment", "years")) %>% 
+  mutate_at(vars(-country), function(x) ifelse(x < 0, NA, x)) %>% 
+  mutate(mean = rowMeans(across(-country), na.rm = TRUE))
+
 min_max_dates <- prices_local_long %>% 
   group_by(country) %>% 
   summarise(min_n = first(which(!is.na(cagr_10_year))),
