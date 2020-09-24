@@ -2,11 +2,17 @@ library(dplyr)
 library(tidyr)
 library(fable)
 library(purrr)
+library(glmnet)
 library(readxl)
+library(tibble)
 library(tsibble)
 library(ggplot2)
+library(patchwork)
 library(lubridate)
+library(ggbeeswarm)
 
+
+# Data availability -------------------------------------------------------
 # Function for getting the first date or amount of years for each country
 get_first_date <- function(long_data, predictor, years_or_min){
   long_data <- get(long_data)
@@ -16,7 +22,7 @@ get_first_date <- function(long_data, predictor, years_or_min){
     mutate(dates = ifelse(!is.na(predictor), date, NA)) %>% 
     group_by(country) %>% 
     summarise(min = as.Date(min(dates, na.rm = TRUE), origin = "1970-01-01"),
-              max = as.Date(max(dates, na.rm = TRUE), origin = "1970-01-01"),
+              max = as.Date(max(dates, na.rm = TRUE), origin = "1970-01-01") - years(10),
               # Without the leakage set
               years = interval(min, max) / years(1) - 10,
               min_yearmonth = yearmonth(min)) %>% 
@@ -40,6 +46,101 @@ availability_years <- map2(dfs, predictors, ~get_first_date(.x, .y, "years")) %>
   reduce(full_join) %>% 
   mutate(mean = rowMeans(across(-country), na.rm = TRUE)) %>% 
   arrange(-mean)
+
+
+# Coefficients and importances --------------------------------------------
+to_elastic_model <- capes_long %>% 
+  inner_join(prices_local_long) %>% 
+  inner_join(unemployment_long) %>%
+  inner_join(rate_10_year_long) %>% 
+  na.omit() %>% 
+  mutate_at(vars(cagr_10_year, cape, unemployment, rate_10_year), scale)
+
+to_elastic_model_training <- to_elastic_model %>% 
+  group_by(country) %>% 
+  do(train = model.matrix(cagr_10_year ~ cape + unemployment + rate_10_year,
+                          data = .)[, -1])
+
+to_elastic_model <- to_elastic_model %>% 
+  group_by(country) %>% 
+  summarise(cagr_10_year = list(cagr_10_year)) %>% 
+  inner_join(to_elastic_model_training)
+
+models_elastic <- to_elastic_model %>% 
+  group_by(country) %>% 
+  do(cv = safely(cv.glmnet)(pluck(.$train, 1),
+                            unlist(.$cagr_10_year),
+                            alpha = 0.5,
+                            nlambda = 30)$result)
+
+models_elastic <- models_elastic %>% 
+  # Extract lambda, 9 for min and 10 for 1se
+  add_column(as.numeric(as.character(lapply(.$cv, `[[`, 10)))) %>%
+  rename(l.1se = 3) %>% 
+  inner_join(to_elastic_model, .)
+
+# Make models
+models_elastic <- models_elastic %>% 
+  group_by(country) %>% 
+  do(models = safely(glmnet)(pluck(.$train, 1),
+                             unlist(.$cagr_10_year),
+                             lambda = .$l.1se,
+                             alpha = 0.5,
+                             # might be faster when vars>obs
+                             type.gaussian = "naive")$result) %>% 
+  inner_join(models_elastic, .)
+
+importances_elastic <- map(models_elastic$models,
+                           ~ .x %>% 
+                             coef() %>% 
+                             as.matrix() %>% 
+                             as.data.frame() %>% 
+                             rownames_to_column()) %>% 
+  reduce(bind_cols) %>% 
+  select(rowname...1, contains("s0"))
+
+# write.csv(availability_years, "availability_years.csv", row.names = FALSE)
+
+coefs_to_plot <- importances_elastic %>% 
+  pivot_longer(-rowname...1) %>%  
+  group_by(rowname...1) %>% 
+  mutate(mean = mean(value))
+
+p_coef <- ggplot(coefs_to_plot,
+       aes(rowname...1, value, color = rowname...1)) +
+  geom_quasirandom() +
+  geom_point(data = coefs_to_plot %>%
+               select(rowname...1, mean) %>%
+               distinct(), aes(rowname...1, mean),
+             shape = "\u2014", size = 20, color = "black", alpha = 0.4) +
+  geom_hline(yintercept = 0) +
+  ggtitle("Standardized coefficients of country-specific elastic net models",
+          subtitle = "Mean coefficients as gray lines") +
+  xlab(NULL) +
+  ylab("Standardized coefficient") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+importances_to_plot <- coefs_to_plot %>% 
+  group_by(rowname...1) %>% 
+  mutate(value = abs(value),
+         mean = mean(abs(value)))
+
+p_importance <- ggplot(importances_to_plot,
+       aes(rowname...1, value, color = rowname...1)) +
+  geom_quasirandom() +
+  geom_point(data = importances_to_plot %>%
+               select(rowname...1, mean) %>%
+               distinct(), aes(rowname...1, mean),
+             shape = "\u2014", size = 20, color = "black", alpha = 0.4) +
+  ggtitle("Importances of country-specific elastic net models",
+          subtitle = "Mean importances as gray lines") +
+  xlab(NULL) +
+  ylab("Importance") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+p_coef / p_importance
 
 min_max_dates <- prices_local_long %>% 
   group_by(country) %>% 
