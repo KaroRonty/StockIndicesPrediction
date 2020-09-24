@@ -13,6 +13,9 @@ library(feasts)
 split_date <- "1995-01-01"
 leakage_end_date <- as.Date(split_date) + years(10)
 
+# For plotting
+fcast_start_date <- as.Date("1980-01-01")
+
 # CAPEs -------------------------------------------------------------------
 capes_wide <- read_excel("Data/cape.xls")
 
@@ -101,7 +104,8 @@ fcast_no_leakage <- fcast %>%
 #          .model == "MEAN(cagr_10_year)")
 
 
-acc_no_leakage <- fcast_no_leakage %>% accuracy(bind_rows(training, test)) %>% 
+acc_no_leakage <- fcast_no_leakage %>% 
+  accuracy(bind_rows(training, test)) %>% 
   select(.model, country, .type, RMSE, MAE, MAPE) %>% 
   filter(!is.na(MAE)) %>% 
   arrange(MAE) %>% 
@@ -127,16 +131,32 @@ fcast_acc <- acc_no_leakage %>% arrange(MAE)
 fcast %>%
   filter(.model == "ARIMA") %>% 
   # filter(country == "AUSTRALIA") %>% 
-  autoplot(color = "red") +
+  autoplot(color = "red", size = 1) +
   autolayer(bind_rows(training, leakage_set, test) %>% 
               filter(country %in% fcast$country), 
             cagr_10_year,
-            color = "black") +
+            color = "black",
+            size = 1) +
+  annotate("rect", fill = "gray", alpha = 0.25, 
+           xmin = as.Date(split_date), xmax = as.Date(leakage_end_date),
+           ymin = -Inf, ymax = Inf) +
+  scale_x_yearmonth(labels = year(seq.Date(fcast_start_date,
+                                                as.Date(max(test$date)),
+                                                by = "5 years")),
+                    breaks = yearmonth(seq.Date(fcast_start_date,
+                                                as.Date(max(test$date)),
+                                                by = "5 years"))) +
   facet_wrap(~ country) + 
-  geom_vline(xintercept = as.Date(split_date), color = "red", linetype = "dashed") +
-  geom_vline(xintercept = as.Date(leakage_end_date), color = "red", linetype = "dashed") +
+  geom_vline(xintercept = as.Date(split_date),
+             color = "gray", linetype = "dashed") +
+  geom_vline(xintercept = as.Date(leakage_end_date),
+             color = "gray", linetype = "dashed") +
+  # scale_x_continuous() + 
   theme_minimal() +
-  theme(legend.position = "bottom")
+  expand_limits(x = fcast_start_date) +
+  theme(legend.position = c(0.95, 0),
+        legend.justification = c(1, 0),
+        axis.text.x = element_text(angle = 45))
 
 arima_acc <- fcast_acc %>% 
   filter(.model == "ARIMA")
@@ -159,5 +179,6 @@ arima_acc %>%
 # Average accuracy of every model
 acc_no_leakage %>% 
   group_by(.model) %>% 
-  summarise(MAE = mean(MAE, na.rm = TRUE)) %>% 
+  summarise(MAE = mean(MAE, na.rm = TRUE),
+            MAPE = mean(MAPE, na.rm = TRUE)) %>% 
   arrange(MAE)
