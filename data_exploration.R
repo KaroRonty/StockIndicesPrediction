@@ -1,6 +1,7 @@
 library(dplyr)
 library(tidyr)
 library(fable)
+library(purrr)
 library(readxl)
 library(tsibble)
 library(ggplot2)
@@ -8,6 +9,8 @@ library(lubridate)
 
 # Function for getting the first date or amount of years for each country
 get_first_date <- function(long_data, predictor, years_or_min){
+  long_data <- get(long_data)
+  
   long_data %>% 
     rename(predictor = 3) %>% 
     mutate(dates = ifelse(!is.na(predictor), date, NA)) %>% 
@@ -20,30 +23,23 @@ get_first_date <- function(long_data, predictor, years_or_min){
     select(country, !!predictor := !!years_or_min)
 }
 
+# Data frames and corresponding predictors to get data availability from
+dfs <- c("capes_long", "prices_local_long", "rate_10_year_long", "unemployment_long")
+predictors <- c("cape", "cagr_10_year", "rate_10_year", "unemployment")
+
 # First date
-availability_min <- capes_long %>% 
-  get_first_date("cape", "min") %>% 
-  full_join(prices_local_long %>% 
-              get_first_date("cagr_10_year", "min")) %>% 
-  full_join(rate_10_year_long %>% 
-              get_first_date("rate_10_year", "min")) %>% 
-  full_join(unemployment_long %>% 
-              get_first_date("unemployment", "min")) %>% 
-  mutate_at(vars(-country), function(x) ifelse(x < 0, NA, x)) %>% 
+availability_date <- map2(dfs, predictors, ~get_first_date(.x, .y, "min")) %>% 
+  reduce(full_join) %>% 
+  mutate_if(is.Date, as.numeric) %>% 
   mutate(mean = rowMeans(across(-country), na.rm = TRUE)) %>% 
-  mutate_if(is.numeric, ~as.Date(.x, origin = "1970-01-01"))
+  mutate_if(is.numeric, ~as.Date(.x, origin = "1970-01-01")) %>% 
+  arrange(mean)
 
 # Amount of years
-availability_years <- capes_long %>% 
-  get_first_date("cape", "years") %>% 
-  full_join(prices_local_long %>% 
-              get_first_date("cagr_10_year", "years")) %>% 
-  full_join(rate_10_year_long %>% 
-              get_first_date("rate_10_year", "years")) %>% 
-  full_join(unemployment_long %>% 
-              get_first_date("unemployment", "years")) %>% 
-  mutate_at(vars(-country), function(x) ifelse(x < 0, NA, x)) %>% 
-  mutate(mean = rowMeans(across(-country), na.rm = TRUE))
+availability_years <- map2(dfs, predictors, ~get_first_date(.x, .y, "years")) %>% 
+  reduce(full_join) %>% 
+  mutate(mean = rowMeans(across(-country), na.rm = TRUE)) %>% 
+  arrange(-mean)
 
 min_max_dates <- prices_local_long %>% 
   group_by(country) %>% 
