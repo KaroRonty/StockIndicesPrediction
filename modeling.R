@@ -1,13 +1,15 @@
 library(readxl)
 library(dplyr)
 library(tidyr)
-library(janitor)
 library(ggplot2)
 library(lubridate)
+library(purrr)
 
 library(fable)
 library(tsibble)
-library(feasts)
+
+# How many years ahead to calculate CAGRs for
+lead_years <- 1:10
 
 # Define date to do the training/test set split
 split_date <- "1995-01-01"
@@ -27,19 +29,26 @@ capes_long <- capes_wide %>%
 # Prices ------------------------------------------------------------------
 prices_local_wide <- read_excel("Data/loc2.xlsx")
 
+# Function for making lagged columns for CAGR
+add_lag_column <- function(df, lag){
+  col_name <- paste0("cagr_", lag, "_year")
+  
+  df %>% 
+    mutate(!!col_name := (lead(price, 12 * lag) / price)^(1 / lag))
+}
+
 prices_local_long <- prices_local_wide %>%
   pivot_longer(AUSTRALIA:UNITED_ARAB_EMIRATES, # FIXME
                names_to = "country",
                values_to = "price") %>% 
   group_by(country) %>% 
   mutate(price = ifelse(price == 0, NA, price),
-         date = yearmonth(date),
-         cagr_10_year = (lead(price, 12 * 10) / price)^(1 / 10))
+         date = yearmonth(date))
 
-to_model <- capes_long %>% 
-  inner_join(prices_local_long) %>% 
-  as_tsibble(key = "country", index = "date")
-
+# Computed separately due to lack of visibility inside a nested function
+prices_local_long <- suppressMessages(map(lead_years,
+                         ~add_lag_column(prices_local_long, .x)) %>% 
+  reduce(inner_join))
 
 # Macro -------------------------------------------------------------------
 unemployment_wide <- read_excel("Data/macro_m.xlsx", sheet = "unr_sa") # unr_na
@@ -54,17 +63,17 @@ rate_10_year_long <- rate_10_year_wide %>%
   pivot_longer(-date, names_to = "country", values_to = "rate_10_year") %>%  # FIXME
   mutate(date = yearmonth(date))
 
+# FIXME
 to_model <- capes_long %>% 
   inner_join(prices_local_long) %>% 
   # inner_join(unemployment_long) %>%
-  inner_join(rate_10_year_long)  %>% 
+  inner_join(rate_10_year_long) %>% 
   na.omit() %>% # FIXME
   as_tsibble(key = "country", index = "date")
 
 # Models ------------------------------------------------------------------
 training <- to_model %>% 
   filter(date < yearmonth(split_date))
-
 
 leakage_set <- to_model %>% 
   filter(date >= yearmonth(split_date),
@@ -75,7 +84,8 @@ test <- to_model %>%
 
 models_ts <- training %>% 
   model(ARIMA = ARIMA(cagr_10_year ~ cape + rate_10_year),
-        MEAN = MEAN(cagr_10_year))#,
+        MEAN = MEAN(cagr_10_year),
+        NAIVE = NAIVE(cagr_10_year))#,
   #       ETS = ETS(cagr_10_year),
   #       RW = RW(cagr_10_year),
   #       NAIVE = NAIVE(cagr_10_year),
@@ -160,6 +170,9 @@ fcast %>%
 
 arima_acc <- fcast_acc %>% 
   filter(.model == "ARIMA")
+
+mean_fcast_acc <- fcast_acc %>% 
+  filter(.model == "MEAN")
 
 non_arima_acc <- mean_fcast_acc %>% 
   filter(.model == "MEAN") %>% 
