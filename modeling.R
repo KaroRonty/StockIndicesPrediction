@@ -20,6 +20,10 @@ fcast_start_date <- as.Date("1980-01-01")
 # Choose model to compare forecasts with
 model_to_compare <- "MEAN"
 
+# Data frames and corresponding predictors to use in mapping
+dfs <- c("capes_long", "prices_local_long", "rate_10_year_long", "unemployment_long")
+predictors <- c("cape", "cagr_10_year", "rate_10_year", "unemployment")
+
 # CAPEs -------------------------------------------------------------------
 capes_wide <- read_excel("Data/cape.xls")
 
@@ -77,14 +81,13 @@ rate_10_year_long <- rate_10_year_wide %>%
 # Models ------------------------------------------------------------------
 # Join variables
 # FIXME
-to_model <- capes_long %>% 
-  full_join(prices_local_long %>% 
-              select(date, country, cagr_10_year)) %>% 
-  # inner_join(unemployment_long) %>%
-  full_join(rate_10_year_long) %>% 
+to_model_exploration <- map(dfs, ~get(.x)) %>% 
+  reduce(full_join) %>% 
   select(date, country, cagr_10_year, cape, rate_10_year) %>% 
-  na.omit() %>% # FIXME
   as_tsibble(key = "country", index = "date")
+
+to_model <- to_model_exploration %>% 
+  na.omit()
 
 # Split into different sets
 training <- to_model %>% 
@@ -191,3 +194,4 @@ acc_no_leakage %>%
   summarise(MAE = mean(MAE, na.rm = TRUE),
             MAPE = mean(MAPE, na.rm = TRUE)) %>% 
   arrange(MAE)
+

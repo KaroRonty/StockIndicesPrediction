@@ -31,10 +31,6 @@ get_first_date <- function(long_data, predictor, years_or_min){
     select(country, !!predictor := !!years_or_min)
 }
 
-# Data frames and corresponding predictors to get data availability from
-dfs <- c("capes_long", "prices_local_long", "rate_10_year_long", "unemployment_long")
-predictors <- c("cape", "cagr_10_year", "rate_10_year", "unemployment")
-
 # First date
 availability_date <- map2(dfs, predictors, ~get_first_date(.x, .y, "min")) %>% 
   reduce(full_join) %>% 
@@ -69,12 +65,8 @@ training %>%
 
 # Coefficients and importances --------------------------------------------
 # FIXME
-to_elastic_model <- capes_long %>% 
-  inner_join(prices_local_long) %>% 
-  inner_join(unemployment_long) %>%
-  inner_join(rate_10_year_long) %>% 
-  na.omit() %>% 
-  mutate_at(vars(cagr_10_year, cape, unemployment, rate_10_year), scale)
+to_elastic_model <- training %>% 
+  mutate_if(is.numeric, scale)
 
 to_elastic_model_training <- to_elastic_model %>% 
   group_by(country) %>% 
