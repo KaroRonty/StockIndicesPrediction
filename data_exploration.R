@@ -60,7 +60,7 @@ training %>%
   geom_text_repel(aes(label = country)) +
   scale_x_continuous(breaks = 1:13,
                      labels = 1:13) +
-  ggtitle("Accuracy of each model vs years of observations") +
+  ggtitle("Accuracy of each model vs years of observations in training set") +
   xlab("Years of observations") +
   theme_minimal() +
   theme(legend.position = "none")
