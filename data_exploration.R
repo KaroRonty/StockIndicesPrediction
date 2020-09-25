@@ -2,11 +2,13 @@ library(dplyr)
 library(tidyr)
 library(fable)
 library(purrr)
+library(visdat)
 library(glmnet)
 library(readxl)
 library(tibble)
 library(tsibble)
 library(ggplot2)
+library(ggrepel)
 library(patchwork)
 library(lubridate)
 library(ggbeeswarm)
@@ -167,6 +169,8 @@ min_max_dates <- prices_local_long %>%
   mutate(min_d = prices_local_long$date[min_n],
          max_d = prices_local_long$date[max_n])
 
+# Old code with first models and exploration ------------------------------
+
 cagr_wide <- prices_local_wide %>% 
   mutate_if(is.numeric, function(x) (lead(x, 12 * 10) / x)^(1 / 10))
 
@@ -259,4 +263,4 @@ models <- training %>%
 fcasts <- models %>% 
   forecast(test)
 
-acc <- fcasts %>% accuracy(test_ts)
+acc <- fcasts %>% accuracy(test)
