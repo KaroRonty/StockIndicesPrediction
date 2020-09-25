@@ -29,12 +29,12 @@ capes_long <- capes_wide %>%
 # Prices ------------------------------------------------------------------
 prices_local_wide <- read_excel("Data/loc2.xlsx")
 
-# Function for making lagged columns for CAGR
-add_lag_column <- function(df, lag){
-  col_name <- paste0("cagr_", lag, "_year")
+# Function for making leaded columns for CAGR
+add_cagr_columns <- function(df, lead){
+  col_name <- paste0("cagr_", lead, "_year")
   
   df %>% 
-    mutate(!!col_name := (lead(price, 12 * lag) / price)^(1 / lag))
+    mutate(!!col_name := (lead(price, 12 * lead) / price)^(1 / lead))
 }
 
 prices_local_long <- prices_local_wide %>%
@@ -47,7 +47,7 @@ prices_local_long <- prices_local_wide %>%
 
 # Computed separately due to lack of visibility inside a nested function
 prices_local_long <- suppressMessages(map(lead_years,
-                         ~add_lag_column(prices_local_long, .x)) %>% 
+                         ~add_cagr_columns(prices_local_long, .x)) %>% 
   reduce(inner_join))
 
 # Macro -------------------------------------------------------------------
