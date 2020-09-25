@@ -47,8 +47,26 @@ availability_years <- map2(dfs, predictors, ~get_first_date(.x, .y, "years")) %>
   mutate(mean = rowMeans(across(-country), na.rm = TRUE)) %>% 
   arrange(-mean)
 
+# Accuracy vs data availability plot
+training %>%
+  as_tibble() %>%
+  group_by(country) %>%
+  summarise(duration = (max(date) - min(date)) / 12) %>%
+  inner_join(arima_acc) %>%
+  arrange(MAE) %>%
+  ggplot(aes(x = duration, y = RMSE, color = country)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "black", alpha = 0.2, size = 0, span = 0.5) +
+  geom_text_repel(aes(label = country)) +
+  scale_x_continuous(breaks = 1:13,
+                     labels = 1:13) +
+  ggtitle("Accuracy of each model vs years of observations") +
+  xlab("Years of observations") +
+  theme_minimal() +
+  theme(legend.position = "none")
 
 # Coefficients and importances --------------------------------------------
+# FIXME
 to_elastic_model <- capes_long %>% 
   inner_join(prices_local_long) %>% 
   inner_join(unemployment_long) %>%
