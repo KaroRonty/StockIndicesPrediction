@@ -18,7 +18,7 @@ leakage_end_date <- as.Date(split_date) + years(10)
 fcast_start_date <- as.Date("1980-01-01")
 
 # Choose model to compare forecasts with
-model_to_compare <- "MEAN"
+model_to_compare <- "NAIVE"
 
 # Data frames and corresponding predictors to use in mapping
 dfs <- c("capes_long", "prices_local_long", "rate_10_year_long", "unemployment_long")
@@ -59,6 +59,45 @@ add_cagr_columns <- function(df, lead){
 prices_local_long <- suppressMessages(
   map(lead_years,
       ~add_cagr_columns(prices_local_long, .x)) %>% 
+    reduce(inner_join))
+
+# Value -------------------------------------------------------------------
+value_local_wide <- read_excel("Data/dm_vl.xlsx")
+
+# Pivot into long format and replace missing values with NAs
+value_local_long <- value_local_wide %>%
+  pivot_longer(-date,
+               names_to = "country",
+               values_to = "price") %>% 
+  group_by(country) %>% 
+  mutate(price = ifelse(price == 0, NA, price),
+         date = yearmonth(date))
+
+# Function for making leaded columns for CAGR
+# Computed separately due to lack of visibility inside a nested function
+value_local_long <- suppressMessages(
+  map(lead_years,
+      ~add_cagr_columns(value_local_long, .x)) %>% 
+    reduce(inner_join))
+
+
+# Growth ------------------------------------------------------------------
+growth_local_wide <- read_excel("Data/dm_gr.xlsx")
+
+# Pivot into long format and replace missing values with NAs
+growth_local_long <- growth_local_wide %>%
+  pivot_longer(-date,
+               names_to = "country",
+               values_to = "price") %>% 
+  group_by(country) %>% 
+  mutate(price = ifelse(price == 0, NA, price),
+         date = yearmonth(date))
+
+# Function for making leaded columns for CAGR
+# Computed separately due to lack of visibility inside a nested function
+growth_local_long <- suppressMessages(
+  map(lead_years,
+      ~add_cagr_columns(growth_local_long, .x)) %>% 
     reduce(inner_join))
 
 # Macro -------------------------------------------------------------------
@@ -194,4 +233,3 @@ acc_no_leakage %>%
   summarise(MAE = mean(MAE, na.rm = TRUE),
             MAPE = mean(MAPE, na.rm = TRUE)) %>% 
   arrange(MAE)
-
