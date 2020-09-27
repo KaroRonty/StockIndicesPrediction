@@ -72,6 +72,62 @@ usd <- cbind(dm_usd, em_usd) %>%
   select(-c(which(colnames(.) == "mth"))[2])
 write.xlsx(usd, "usd2.xls")
 
+# Value Indices
+length_ts_vl <- length(ts(start = c(1974,12), end = c(2020,8), frequency = 12))
+
+read.excel <- function(path, name, l) { # files need to be separated by currency to work
+  files <- list.files(path = paste0(getwd(),path), pattern = "*.xls", full.names = T)
+  dat <- map_dfc(files, read_excel, skip = 6, n_max = l) # include cutoff point
+  assign(paste(name), dat, envir = .GlobalEnv)
+}
+
+read.excel("/11_Value", "dm_vl", length_ts_vl)
+
+clean.data <- function(dr, name) {
+  dr %>%  mutate(mth = Date...1) %>% # create copy of date column with new name 
+    select(-contains("...")) %>% # delete date duplicates
+    select(mth, everything()) %>% # change order
+    mutate(mth = tsibble::yearmonth(mth)) %>% as_tsibble(index = mth) -> dr # transform date fo tsibble format
+  
+  names(dr) <- gsub(pattern = "* VALUE Standard.*", replacement = "", x = names(dr)) # delete name parts
+  
+  assign(paste(name), dr, envir = .GlobalEnv) # create df
+  # write.xlsx(paste(name), paste0(name,".xls")) # save as .xls
+}
+
+clean.data(dm_vl, "dm_vl") 
+dm_vl <- full_join(dat, dm_vl, by = c("mth" = "mth"))
+write.xlsx(dm_vl, "dm_vl.xlsx")
+
+
+# Growth Indices
+length_ts_gr <- length(ts(start = c(1974,12), end = c(2020,8), frequency = 12))
+
+read.excel <- function(path, name, l) { # files need to be separated by currency to work
+  files <- list.files(path = paste0(getwd(),path), pattern = "*.xls", full.names = T)
+  dat <- map_dfc(files, read_excel, skip = 6, n_max = l) # include cutoff point
+  assign(paste(name), dat, envir = .GlobalEnv)
+}
+
+read.excel("/12_Growth", "dm_gr", length_ts_gr)
+
+clean.data <- function(dr, name) {
+  dr %>%  mutate(mth = Date...1) %>% # create copy of date column with new name 
+    select(-contains("...")) %>% # delete date duplicates
+    select(mth, everything()) %>% # change order
+    mutate(mth = tsibble::yearmonth(mth)) %>% as_tsibble(index = mth) -> dr # transform date fo tsibble format
+  
+  names(dr) <- gsub(pattern = "* GROWTH Standard.*", replacement = "", x = names(dr)) # delete name parts
+  
+  assign(paste(name), dr, envir = .GlobalEnv) # create df
+  # write.xlsx(paste(name), paste0(name,".xls")) # save as .xls
+}
+
+clean.data(dm_gr, "dm_gr") 
+dm_gr <- full_join(dat, dm_gr, by = c("mth" = "mth"))
+write.xlsx(dm_gr, "dm_gr.xlsx")
+
+
 # CAPE adjustments
 
 cape <- read.csv(paste0(getwd(),"/02_CAPE/cape.csv"), nrow = 465) %>% 
