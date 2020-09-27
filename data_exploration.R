@@ -2,11 +2,13 @@ library(dplyr)
 library(tidyr)
 library(fable)
 library(purrr)
+library(visdat)
 library(glmnet)
 library(readxl)
 library(tibble)
 library(tsibble)
 library(ggplot2)
+library(ggrepel)
 library(patchwork)
 library(lubridate)
 library(ggbeeswarm)
@@ -29,10 +31,6 @@ get_first_date <- function(long_data, predictor, years_or_min){
     select(country, !!predictor := !!years_or_min)
 }
 
-# Data frames and corresponding predictors to get data availability from
-dfs <- c("capes_long", "prices_local_long", "rate_10_year_long", "unemployment_long")
-predictors <- c("cape", "cagr_10_year", "rate_10_year", "unemployment")
-
 # First date
 availability_date <- map2(dfs, predictors, ~get_first_date(.x, .y, "min")) %>% 
   reduce(full_join) %>% 
@@ -47,14 +45,28 @@ availability_years <- map2(dfs, predictors, ~get_first_date(.x, .y, "years")) %>
   mutate(mean = rowMeans(across(-country), na.rm = TRUE)) %>% 
   arrange(-mean)
 
+# Accuracy vs data availability plot
+training %>%
+  as_tibble() %>%
+  group_by(country) %>%
+  summarise(duration = (max(date) - min(date)) / 12) %>%
+  inner_join(arima_acc) %>%
+  arrange(MAE) %>%
+  ggplot(aes(x = duration, y = RMSE, color = country)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "black", alpha = 0.2, size = 0, span = 0.5) +
+  geom_text_repel(aes(label = country)) +
+  scale_x_continuous(breaks = 1:13,
+                     labels = 1:13) +
+  ggtitle("Accuracy of each model vs years of observations in training set") +
+  xlab("Years of observations") +
+  theme_minimal() +
+  theme(legend.position = "none")
 
 # Coefficients and importances --------------------------------------------
-to_elastic_model <- capes_long %>% 
-  inner_join(prices_local_long) %>% 
-  inner_join(unemployment_long) %>%
-  inner_join(rate_10_year_long) %>% 
-  na.omit() %>% 
-  mutate_at(vars(cagr_10_year, cape, unemployment, rate_10_year), scale)
+# FIXME
+to_elastic_model <- training %>% 
+  mutate_if(is.numeric, scale)
 
 to_elastic_model_training <- to_elastic_model %>% 
   group_by(country) %>% 
@@ -149,6 +161,8 @@ min_max_dates <- prices_local_long %>%
   mutate(min_d = prices_local_long$date[min_n],
          max_d = prices_local_long$date[max_n])
 
+# Old code with first models and exploration ------------------------------
+
 cagr_wide <- prices_local_wide %>% 
   mutate_if(is.numeric, function(x) (lead(x, 12 * 10) / x)^(1 / 10))
 
@@ -241,4 +255,4 @@ models <- training %>%
 fcasts <- models %>% 
   forecast(test)
 
-acc <- fcasts %>% accuracy(test_ts)
+acc <- fcasts %>% accuracy(test)
