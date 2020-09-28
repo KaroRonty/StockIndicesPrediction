@@ -14,6 +14,10 @@ library(lubridate)
 library(ggbeeswarm)
 
 
+scale <- function(x){
+  (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
+}
+
 # Data availability -------------------------------------------------------
 # Function for getting the first date or amount of years for each country
 get_first_date <- function(long_data, predictor, years_or_min){
@@ -65,8 +69,11 @@ training %>%
 
 # Coefficients and importances --------------------------------------------
 # FIXME
-to_elastic_model <- training %>% 
-  mutate_if(is.numeric, scale)
+to_elastic_model <- to_model_exploration %>% 
+  select(-dividend_yield) %>% # FIXME make work with other variables 
+  group_by(country) %>% 
+  mutate_if(is.numeric, scale) %>% 
+  na.omit()
 
 to_elastic_model_training <- to_elastic_model %>% 
   group_by(country) %>% 
@@ -74,6 +81,7 @@ to_elastic_model_training <- to_elastic_model %>%
                           data = .)[, -1])
 
 to_elastic_model <- to_elastic_model %>% 
+  as_tibble() %>% 
   group_by(country) %>% 
   summarise(cagr_10_year = list(cagr_10_year)) %>% 
   inner_join(to_elastic_model_training)
@@ -119,7 +127,7 @@ coefs_to_plot <- importances_elastic %>%
   mutate(mean = mean(value))
 
 p_coef <- ggplot(coefs_to_plot,
-       aes(rowname...1, value, color = rowname...1)) +
+                 aes(rowname...1, value, color = rowname...1)) +
   geom_quasirandom() +
   geom_point(data = coefs_to_plot %>%
                select(rowname...1, mean) %>%
@@ -139,7 +147,7 @@ importances_to_plot <- coefs_to_plot %>%
          mean = mean(abs(value)))
 
 p_importance <- ggplot(importances_to_plot,
-       aes(rowname...1, value, color = rowname...1)) +
+                       aes(rowname...1, value, color = rowname...1)) +
   geom_quasirandom() +
   geom_point(data = importances_to_plot %>%
                select(rowname...1, mean) %>%
