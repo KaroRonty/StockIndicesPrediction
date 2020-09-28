@@ -192,6 +192,7 @@ fcast %>%
   annotate("rect", fill = "gray", alpha = 0.25, 
            xmin = as.Date(split_date), xmax = as.Date(leakage_end_date),
            ymin = -Inf, ymax = Inf) +
+  geom_hline(yintercept = 1) +
   scale_x_yearmonth(labels = year(seq.Date(fcast_start_date,
                                            as.Date(max(test$date)),
                                            by = "5 years")),

@@ -5,7 +5,7 @@ scale <- function(x){
 }
 
 # Data frames and corresponding predictors to use in mapping
-dfs <- c("capes_long", "growth_local_long", "rate_10_year_long", "unemployment_long")
+dfs <- c("capes_long", "prices_local_long", "rate_10_year_long", "unemployment_long")
 predictors <- c("cape", "cagr_10_year", "rate_10_year", "unemployment")
 
 # Models ------------------------------------------------------------------
@@ -14,7 +14,7 @@ predictors <- c("cape", "cagr_10_year", "rate_10_year", "unemployment")
 to_model_exploration <- map(dfs, ~get(.x)) %>% 
   reduce(full_join) %>% 
   select(date, country, cagr_10_year, cape, rate_10_year) %>% 
-  mutate_if(is.numeric, scale) %>% # FIXME scaling the target?
+  mutate_if(is.numeric, scale) %>% # TODO scale or unscale
   as_tsibble(key = "country", index = "date")
 
 to_model <- to_model_exploration %>% 
@@ -72,6 +72,7 @@ fcast %>%
             cagr_10_year,
             color = "black",
             size = 1) +
+  geom_hline(yintercept = 1) + 
   scale_x_yearmonth(labels = year(seq.Date(fcast_start_date,
                                            as.Date(max(test$date)),
                                            by = "5 years")),
