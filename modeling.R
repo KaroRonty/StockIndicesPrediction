@@ -21,19 +21,10 @@ fcast_start_date <- as.Date("1980-01-01")
 model_to_compare <- "NAIVE"
 
 # Data frames and corresponding predictors to use in mapping
-dfs <- c("capes_long", "prices_local_long", "rate_10_year_long", "unemployment_long")
-predictors <- c("cape", "cagr_10_year", "rate_10_year", "unemployment")
-
-# CAPEs -------------------------------------------------------------------
-capes_wide <- read_excel("Data/cape.xls")
-
-# Pivot into long format and replace missing values with NAs
-capes_long <- capes_wide %>% 
-  pivot_longer(AUSTRALIA:USA,
-               names_to = "country",
-               values_to = "cape") %>%
-  mutate(cape = ifelse(cape == 0, NA, cape),
-         date = yearmonth(date))
+dfs <- c("prices_local_long", "capes_long", "rate_10_year_long",
+         "unemployment_long", "dividends_long")
+predictors <- c("cagr_10_year", "cape", "rate_10_year",
+                "unemployment", "dividend_yield")
 
 # Prices ------------------------------------------------------------------
 prices_local_wide <- read_excel("Data/loc2.xlsx")
@@ -100,6 +91,17 @@ growth_local_long <- suppressMessages(
       ~add_cagr_columns(growth_local_long, .x)) %>% 
     reduce(inner_join))
 
+# CAPEs -------------------------------------------------------------------
+capes_wide <- read_excel("Data/cape.xls")
+
+# Pivot into long format and replace missing values with NAs
+capes_long <- capes_wide %>% 
+  pivot_longer(AUSTRALIA:USA,
+               names_to = "country",
+               values_to = "cape") %>%
+  mutate(cape = ifelse(cape == 0, NA, cape),
+         date = yearmonth(date))
+
 # Macro -------------------------------------------------------------------
 unemployment_wide <- read_excel("Data/macro_m.xlsx", sheet = "unr_sa") # unr_na
 
@@ -117,12 +119,27 @@ rate_10_year_long <- rate_10_year_wide %>%
                values_to = "rate_10_year") %>% 
   mutate(date = yearmonth(date))
 
+# Dividends ---------------------------------------------------------------
+# Get dividend yields from each sheet, rename according to country and combine
+dividends_wide <- map(1:32,
+                      ~read_excel("Data/sti.xlsx", sheet = .x) %>% 
+                        select(date,
+                               !!excel_sheets("Data/sti.xlsx")[.x] :=
+                                 contains("dividend_yield"))) %>% 
+  reduce(full_join)
+
+dividends_long <- dividends_wide %>% 
+  pivot_longer(-date, 
+               names_to = "country", 
+               values_to = "dividend_yield") %>% 
+  mutate(date = yearmonth(date))
+
 # Models ------------------------------------------------------------------
 # Join variables
 # FIXME
 to_model_exploration <- map(dfs, ~get(.x)) %>% 
   reduce(full_join) %>% 
-  select(date, country, cagr_10_year, cape, rate_10_year) %>% 
+  select(date, country, !!predictors) %>% 
   as_tsibble(key = "country", index = "date")
 
 to_model <- to_model_exploration %>% 
@@ -141,7 +158,7 @@ test <- to_model %>%
 
 # Train different time series models
 models_ts <- training %>% 
-  model(ARIMA = ARIMA(cagr_10_year ~ cape + rate_10_year),
+  model(ARIMA = ARIMA(cagr_10_year ~ cape + rate_10_year + dividend_yield),
         MEAN = MEAN(cagr_10_year),
         NAIVE = NAIVE(cagr_10_year))#,
 #       ETS = ETS(cagr_10_year),
