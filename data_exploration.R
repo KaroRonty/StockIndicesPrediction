@@ -1,19 +1,11 @@
-library(dplyr)
-library(tidyr)
-library(fable)
-library(purrr)
 library(visdat)
 library(glmnet)
-library(readxl)
 library(tibble)
-library(tsibble)
-library(ggplot2)
 library(ggrepel)
 library(patchwork)
-library(lubridate)
 library(ggbeeswarm)
 
-
+# Custom scaling function that does not return a matrix
 scale <- function(x){
   (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
 }
@@ -117,21 +109,21 @@ importances_elastic <- map(models_elastic$models,
                              as.data.frame() %>% 
                              rownames_to_column()) %>% 
   reduce(bind_cols) %>% 
-  select(rowname...1, contains("s0"))
+  select(predictor = rowname...1, contains("s0"))
 
 # write.csv(availability_years, "availability_years.csv", row.names = FALSE)
 
 coefs_to_plot <- importances_elastic %>% 
-  pivot_longer(-rowname...1) %>%  
-  group_by(rowname...1) %>% 
+  pivot_longer(-predictor) %>%  
+  group_by(predictor) %>% 
   mutate(mean = mean(value))
 
 p_coef <- ggplot(coefs_to_plot,
-                 aes(rowname...1, value, color = rowname...1)) +
+                 aes(predictor, value, color = predictor)) +
   geom_quasirandom() +
   geom_point(data = coefs_to_plot %>%
-               select(rowname...1, mean) %>%
-               distinct(), aes(rowname...1, mean),
+               select(predictor, mean) %>%
+               distinct(), aes(predictor, mean),
              shape = "\u2014", size = 20, color = "black", alpha = 0.4) +
   geom_hline(yintercept = 0) +
   ggtitle("Standardized coefficients of country-specific elastic net models",
@@ -142,16 +134,16 @@ p_coef <- ggplot(coefs_to_plot,
   theme(legend.position = "none")
 
 importances_to_plot <- coefs_to_plot %>% 
-  group_by(rowname...1) %>% 
+  group_by(predictor) %>% 
   mutate(value = abs(value),
          mean = mean(abs(value)))
 
 p_importance <- ggplot(importances_to_plot,
-                       aes(rowname...1, value, color = rowname...1)) +
+                       aes(predictor, value, color = predictor)) +
   geom_quasirandom() +
   geom_point(data = importances_to_plot %>%
-               select(rowname...1, mean) %>%
-               distinct(), aes(rowname...1, mean),
+               select(predictor, mean) %>%
+               distinct(), aes(predictor, mean),
              shape = "\u2014", size = 20, color = "black", alpha = 0.4) +
   ggtitle("Importances of country-specific elastic net models",
           subtitle = "Mean importances as gray lines") +
