@@ -187,20 +187,32 @@ leakage_set <- to_model %>%
 test <- to_model %>% 
   filter(date >= yearmonth(leakage_end_date))
 
+# functions for model training
+fvar_1 <- as.formula("cagr_10_year ~ cape") 
+fvar_2 <- as.formula("cagr_10_year ~ cape + rate_10_year")
+fvar_3 <- as.formula("cagr_10_year ~ cape + rate_10_year + dividend_yield")
+# fvar_4 <- as.formula("cagr_10_year ~ cape + rate_10_year + dividend_yield + market_value")
+
+
+
 # Train different time series models
 models_ts <- training %>% 
   model(ARIMA = ARIMA(cagr_10_year ~ cape + rate_10_year + dividend_yield),
         MEAN = MEAN(cagr_10_year),
-        NAIVE = NAIVE(cagr_10_year))#,
+        NAIVE = NAIVE(cagr_10_year),#,
 #       ETS = ETS(cagr_10_year),
 #       RW = RW(cagr_10_year),
 #       NAIVE = NAIVE(cagr_10_year),
 #       SNAIVE = SNAIVE(cagr_10_year),
 #       NNETAR = NNETAR(cagr_10_year),
 #       AR = AR(cagr_10_year),
-#       VAR = VAR(cagr_10_year)) %>% 
-# mutate(COMBINATION = (ARIMA + SNAIVE + VAR + NAIVE + RW) / 5,
-#        ARIMA_SNAIVE = (ARIMA + SNAIVE) / 2)
+        VAR = VAR(cagr_10_year),
+        VAR1 = VAR(fvar_1),
+        VAR2 = VAR(fvar_2),
+        VAR3 = VAR(fvar_3))
+        # VAR4 = VAR(fvar_4))
+#       mutate(COMBINATION = (ARIMA + SNAIVE + VAR + NAIVE + RW) / 5,
+#       ARIMA_SNAIVE = (ARIMA + SNAIVE) / 2)
 
 # # Training set accuracy
 # models_ts %>% accuracy()
@@ -228,35 +240,40 @@ acc_no_leakage <- fcast_no_leakage %>%
   print(n = 100)
 
 # Plot all sets with forecasts
-fcast %>%
-  filter(.model == "ARIMA") %>% 
-  # filter(country == "AUSTRALIA") %>% 
-  autoplot(color = "red", size = 1) +
-  autolayer(bind_rows(training, leakage_set, test) %>% 
-              filter(country %in% fcast$country), 
-            cagr_10_year,
-            color = "black",
-            size = 1) +
-  annotate("rect", fill = "gray", alpha = 0.25, 
-           xmin = as.Date(split_date), xmax = as.Date(leakage_end_date),
-           ymin = -Inf, ymax = Inf) +
-  geom_hline(yintercept = 1) +
-  scale_x_yearmonth(labels = year(seq.Date(fcast_start_date,
-                                           as.Date(max(test$date)),
-                                           by = "5 years")),
-                    breaks = yearmonth(seq.Date(fcast_start_date,
-                                                as.Date(max(test$date)),
-                                                by = "5 years"))) +
-  facet_wrap(~ country) + 
-  geom_vline(xintercept = as.Date(split_date),
-             color = "gray", linetype = "dashed") +
-  geom_vline(xintercept = as.Date(leakage_end_date),
-             color = "gray", linetype = "dashed") +
-  theme_minimal() +
-  expand_limits(x = fcast_start_date) +
-  theme(legend.position = c(0.95, 0),
-        legend.justification = c(1, 0),
-        axis.text.x = element_text(angle = 45))
+plot.fcst <- function(model) {
+  fcast %>%
+    filter(.model == model) %>% 
+    # filter(country == "AUSTRALIA") %>% 
+    autoplot(color = "red", size = 1) +
+    autolayer(bind_rows(training, leakage_set, test) %>% 
+                filter(country %in% fcast$country), 
+              cagr_10_year,
+              color = "black",
+              size = 1) +
+    annotate("rect", fill = "gray", alpha = 0.25, 
+             xmin = as.Date(split_date), xmax = as.Date(leakage_end_date),
+             ymin = -Inf, ymax = Inf) +
+    geom_hline(yintercept = 1) +
+    scale_x_yearmonth(labels = year(seq.Date(fcast_start_date,
+                                             as.Date(max(test$date)),
+                                             by = "5 years")),
+                      breaks = yearmonth(seq.Date(fcast_start_date,
+                                                  as.Date(max(test$date)),
+                                                  by = "5 years"))) +
+    facet_wrap(~ country) + 
+    geom_vline(xintercept = as.Date(split_date),
+               color = "gray", linetype = "dashed") +
+    geom_vline(xintercept = as.Date(leakage_end_date),
+               color = "gray", linetype = "dashed") +
+    theme_minimal() +
+    expand_limits(x = fcast_start_date) +
+    theme(legend.position = c(0.95, 0),
+          legend.justification = c(1, 0),
+          axis.text.x = element_text(angle = 45))
+}
+
+plot.fcst("ARIMA")
+
 
 # Calculate and compare accuracies of two different model types
 arima_acc <- acc_no_leakage %>% 
@@ -282,3 +299,11 @@ acc_no_leakage %>%
   summarise(MAE = mean(MAE, na.rm = TRUE),
             MAPE = mean(MAPE, na.rm = TRUE)) %>% 
   arrange(MAE)
+
+# ------ VAR Models
+
+plot.fcst("VAR")
+plot.fcst("VAR1")
+plot.fcst("VAR2")
+plot.fcst("VAR3")
+plot.fcst("VAR4")
