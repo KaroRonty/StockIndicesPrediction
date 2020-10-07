@@ -190,7 +190,8 @@ test <- to_model %>%
 # functions for model training
 fvar_1 <- as.formula("cagr_10_year ~ cape") 
 fvar_2 <- as.formula("cagr_10_year ~ cape + rate_10_year")
-fvar_3 <- as.formula("cagr_10_year ~ cape + rate_10_year + dividend_yield")
+fvar_3 <- as.formula("cagr_10_year ~ cape + dividend_yield")
+fvar_4 <- as.formula("cagr_10_year ~ cape + rate_10_year + dividend_yield")
 # fvar_4 <- as.formula("cagr_10_year ~ cape + rate_10_year + dividend_yield + market_value")
 
 
@@ -209,7 +210,8 @@ models_ts <- training %>%
         VAR = VAR(cagr_10_year),
         VAR1 = VAR(fvar_1),
         VAR2 = VAR(fvar_2),
-        VAR3 = VAR(fvar_3))
+        VAR3 = VAR(fvar_3),
+        VAR4 = VAR(fvar_4))
         # VAR4 = VAR(fvar_4))
 #       mutate(COMBINATION = (ARIMA + SNAIVE + VAR + NAIVE + RW) / 5,
 #       ARIMA_SNAIVE = (ARIMA + SNAIVE) / 2)
@@ -234,7 +236,7 @@ fcast_no_leakage <- fcast %>%
 # Calculate leakage-free accuracies
 acc_no_leakage <- fcast_no_leakage %>% 
   accuracy(bind_rows(training, test)) %>% 
-  select(.model, country, .type, RMSE, MAE, MAPE) %>% 
+  select(.model, country, .type, ME, RMSE, MAE, MAPE) %>% 
   filter(!is.na(MAE)) %>% 
   arrange(MAE) %>% 
   print(n = 100)
@@ -279,25 +281,52 @@ plot.fcst("ARIMA")
 arima_acc <- acc_no_leakage %>% 
   filter(.model == "ARIMA")
 
+var_acc <- acc_no_leakage %>% 
+  filter(.model == "VAR")
+
+var1_acc <- acc_no_leakage %>% 
+  filter(.model == "VAR1")
+
+var2_acc <- acc_no_leakage %>% 
+  filter(.model == "VAR2")
+
+var3_acc <- acc_no_leakage %>% 
+  filter(.model == "VAR3")
+
+var4_acc <- acc_no_leakage %>% 
+  filter(.model == "VAR4")
+
+
 non_arima_acc <- acc_no_leakage %>% 
   filter(.model == model_to_compare) %>% 
   mutate(MAE_mean = MAE,
          MAPE_mean = MAPE) %>% 
   select(country, MAE_mean, MAPE_mean)
 
-arima_acc %>% 
-  full_join(non_arima_acc) %>% 
-  mutate(MAE_diff = MAE - MAE_mean,
-         MAPE_diff = MAPE - MAPE_mean,
-         MAPE_div = MAPE_mean / MAPE) %>% 
-  arrange(-MAPE_div) %>% 
-  print(n = 50)
+# apply to one central list
+
+acc.calc <- function(model) {
+  
+  model_acc <- get(model)
+  
+  model_acc %<>% 
+    full_join(non_arima_acc) %>% 
+    mutate(MAE_diff = MAE - MAE_mean,
+           MAPE_diff = MAPE - MAPE_mean,
+           MAPE_div = MAPE_mean / MAPE) %>% 
+    arrange(-MAPE_div) %>% 
+    print(n = 50)
+}
+
+res <- lapply(c("arima_acc", "var_acc", "var1_acc", "var2_acc", "var3_acc", "var4_acc"), acc.calc)
+res2 <- do.call(rbind, res)
 
 # Average accuracy of every model
 acc_no_leakage %>% 
   group_by(.model) %>% 
   summarise(MAE = mean(MAE, na.rm = TRUE),
-            MAPE = mean(MAPE, na.rm = TRUE)) %>% 
+            MAPE = mean(MAPE, na.rm = TRUE),
+            ME = mean(ME, na.rm = T)) %>% 
   arrange(MAE)
 
 # ------ VAR Models
@@ -306,4 +335,5 @@ plot.fcst("VAR")
 plot.fcst("VAR1")
 plot.fcst("VAR2")
 plot.fcst("VAR3")
+plot.fcst("VAR4")
 # plot.fcst("VAR4")
