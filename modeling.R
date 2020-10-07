@@ -134,6 +134,37 @@ dividends_long <- dividends_wide %>%
                values_to = "dividend_yield") %>% 
   mutate(date = yearmonth(date))
 
+# Market Capitalization 
+
+cap_wide <- map(1:32,
+                  ~read_excel("Data/sti.xlsx", sheet = .x) %>% 
+                        select(date,
+                               !!excel_sheets("Data/sti.xlsx")[.x] :=
+                                 contains("market_value"))) %>% 
+  reduce(full_join)
+
+
+cap_long <- cap_wide %>% 
+  pivot_longer(-date, 
+               names_to = "country", 
+               values_to = "market_value") %>% 
+  mutate(date = yearmonth(date))
+  
+cap_availability <- 
+  cap_long %>% 
+  group_by(country) %>% 
+  summarise(non_na_count = sum(!is.na(market_value))/12) %>% 
+  arrange(desc(non_na_count))
+
+repl_cap <- c("SWITZERLAND2" = "SWITZERLAND", "JAPAN1" = "JAPAN")
+
+cap_long %>%
+  as.data.frame() %>% 
+  filter(country != "SWITZERLAND1",
+         country != "JAPAN2") %>% 
+  mutate(country = recode(country, !!!repl_cap)) %>% 
+  as_tibble() -> cap_long
+
 # Models ------------------------------------------------------------------
 # Join variables
 # FIXME
