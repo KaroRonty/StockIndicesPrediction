@@ -41,6 +41,14 @@ availability_years <- map2(dfs, predictors, ~get_first_date(.x, .y, "years")) %>
   mutate(mean = rowMeans(across(-country), na.rm = TRUE)) %>% 
   arrange(-mean)
 
+# Get the feature names from the first model for the plot title
+all_features_1st <- models_ts$ARIMA[[1]]$fit$par$term
+
+features_plot_title <- all_features_1st[all_features_1st %in% predictors] %>% 
+  paste0(collapse = " + ") %>% 
+  c(models_ts$ARIMA[[1]]$response[[1]], .) %>% 
+  paste0(collapse = " ~ ")
+
 # Accuracy vs data availability plot
 training %>%
   as_tibble() %>%
@@ -54,7 +62,8 @@ training %>%
   geom_text_repel(aes(label = country)) +
   scale_x_continuous(breaks = 1:13,
                      labels = 1:13) +
-  ggtitle("Accuracy of each model vs years of observations in training set") +
+  ggtitle("Accuracy of each model vs years of observations in training set",
+          subtitle = features_plot_title) +
   xlab("Years of observations") +
   theme_minimal() +
   theme(legend.position = "none")
