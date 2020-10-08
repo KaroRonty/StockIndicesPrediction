@@ -134,7 +134,7 @@ dividends_long <- dividends_wide %>%
                values_to = "dividend_yield") %>% 
   mutate(date = yearmonth(date))
 
-# Market Capitalization ---------------------------------------------------
+# Market capitalization ---------------------------------------------------
 cap_wide <- map(1:32,
                   ~read_excel("Data/sti.xlsx", sheet = .x) %>% 
                         select(date,
@@ -148,10 +148,10 @@ cap_long <- cap_wide %>%
                values_to = "market_value") %>% 
   mutate(date = yearmonth(date))
   
-cap_availability <- cap_long %>% 
-  group_by(country) %>% 
-  summarise(non_na_count = sum(!is.na(market_value))/12) %>% 
-  arrange(desc(non_na_count))
+# cap_availability <- cap_long %>% 
+#   group_by(country) %>% 
+#   summarise(non_na_count = sum(!is.na(market_value)) / 12) %>% 
+#   arrange(desc(non_na_count))
 
 repl_cap <- c("SWITZERLAND2" = "SWITZERLAND", "JAPAN1" = "JAPAN")
 
@@ -207,7 +207,7 @@ fcast <- models_ts %>%
   forecast(test)
 
 fcast_no_leakage <- fcast %>% 
-  filter(date > yearmonth(leakage_end_date))#,
+  filter(date > yearmonth(leakage_end_date))
 
 # Calculate leakage-free accuracies
 acc_no_leakage <- fcast_no_leakage %>% 
@@ -259,7 +259,7 @@ naive_or_mean_acc <- acc_no_leakage %>%
   select(country, MAE_mean, MAPE_mean)
 
 # Print accuracies with differences to naive or mean forecast
-model_acc %>% 
+acc_no_leakage %>% 
   full_join(naive_or_mean_acc) %>% 
   mutate(MAE_diff = MAE - MAE_mean,
          MAPE_diff = MAPE - MAPE_mean,
