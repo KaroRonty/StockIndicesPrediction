@@ -7,6 +7,8 @@ library(ggplot2)
 library(tsibble)
 library(lubridate)
 
+library(corrplot)
+
 # How many years ahead to calculate CAGRs for
 lead_years <- 1:10
 
@@ -331,9 +333,94 @@ acc_no_leakage %>%
 
 # ------ VAR Models
 
+corrplot(cor(training[, -c(1:2)]), method = "square", order = "hclust")
+
+
 plot.fcst("VAR")
 plot.fcst("VAR1")
 plot.fcst("VAR2")
 plot.fcst("VAR3")
 plot.fcst("VAR4")
 # plot.fcst("VAR4")
+
+
+
+# ---- XGB
+
+cv <- trainControl(method = "timeslice", # used timeslice!
+                   initialWindow = 60, # training observations
+                   horizon = 30, # prediction ahead
+                   skip = 60 + 30 - 1, # skip to avoid data leakage (Karo tested it - but hoow?)
+                   fixedWindow = TRUE, # starts at the next observation
+                   allowParallel = TRUE) # parallel backend usage
+
+xgb.training <- function(c) {
+  train(training %>% as_tibble() %>% filter(country == c) %>% select(-date, -cagr_10_year, -country) %>% as.matrix(),
+                   training %>% filter(country == c) %>%  pull(cagr_10_year), 
+                   method = "xgbTree",
+                   trControl = cv)
+  # difficulty is to find fitting parameters for every country (usually the error arises from too low values for horizon or skip)
+  # assign(xgboost, paste0("xgboost_",c))
+}
+
+r1 <- lapply(unique(training$country), xgb.training)
+do.call(rbind, r1)
+
+
+
+xgboost <- train(training %>% as_tibble() %>% filter(country == "USA") %>% select(-date, -cagr_10_year, -country) %>% as.matrix(),
+                 training %>% filter(country == "USA") %>%  pull(cagr_10_year), 
+                 method = "xgbTree",
+                 trControl = cv)
+
+models <- tibble(name = c("xgboost"),
+                 model = NA,
+                 actual = NA,
+                 pred = NA,
+                 rsq_cv = NA,
+                 mae_cv = NA,
+                 date_train = NA)
+
+# Loop the models, predictions and accuracy measures into the tibble
+for(i in 1:nrow(models)){
+  models$model[i] <- get(models$name[i]) %>% list() # get urges to get the whole content 
+  models$actual[i] <- training %>% filter(country == "USA") %>% pull(cagr_10_year) %>% list() # pull actual data
+  models$pred[i] <- predict(get(models$name[i]), # get predictions based on actual training data
+                            training %>%
+                              as_tibble() %>% 
+                              filter(country == "USA") %>% 
+                              select(-date, -cagr_10_year, -country) %>%
+                              as.matrix()) %>%
+    as.vector() %>% 
+    list()
+  models$rsq_cv[i] <- get(models$name[i])$resample$Rsquared %>% mean(na.rm = TRUE)
+  models$mae_cv[i] <- get(models$name[i])$resample$MAE %>% mean(na.rm = TRUE)
+  models$date_train[i] <- training %>% filter(country == "USA") %>% pull(date) %>% list() # pull dates to make understandable again
+}
+
+# Make a tibble for storing test set results
+models_test <- tibble(name = models$name,
+                      actual_test = NA,
+                      pred_test = NA,
+                      rsq_test = NA,
+                      mae_test = NA,
+                      pred_future = NA,
+                      date_test = NA)
+
+# Loop the models, predictions and accuracy measures into the tibble
+for(i in 1:nrow(models_test)){
+  models_test$actual_test[i] <- test %>% filter(country == "USA") %>%  pull(cagr_10_year) %>% list()
+  models_test$pred_test[i] <- predict(get(models_test$name[i]),
+                                      test %>% 
+                                        as_tibble() %>% 
+                                        filter(country == "USA") %>% 
+                                        select(-date, -cagr_10_year, -country) %>%
+                                        as.matrix()) %>%
+    as.vector() %>% 
+    list()
+  models_test$rsq_test[i] <- cor(models_test$actual_test[[i]],
+                                 models_test$pred_test[[i]])^2
+  models_test$mae_test[i] <- mean(abs(models_test$pred_test[[i]] -
+                                        models_test$actual_test[[i]]))
+  models_test$date_test[i] <- test %>% filter(country == "USA") %>% pull(date) %>% list()
+}
