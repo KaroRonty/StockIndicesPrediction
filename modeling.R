@@ -6,8 +6,7 @@ library(readxl)
 library(ggplot2)
 library(tsibble)
 library(lubridate)
-
-library(corrplot)
+library(ggcorrplot)
 
 # How many years ahead to calculate CAGRs for
 lead_years <- 1:10
@@ -73,7 +72,6 @@ value_local_long <- suppressMessages(
       ~add_cagr_columns(value_local_long, .x)) %>% 
     reduce(inner_join))
 
-
 # Growth ------------------------------------------------------------------
 growth_local_wide <- read_excel("Data/dm_gr.xlsx")
 
@@ -98,7 +96,7 @@ capes_wide <- read_excel("Data/cape.xls")
 
 # Pivot into long format and replace missing values with NAs
 capes_long <- capes_wide %>% 
-  pivot_longer(AUSTRALIA:USA,
+  pivot_longer(-date,
                names_to = "country",
                values_to = "cape") %>%
   mutate(cape = ifelse(cape == 0, NA, cape),
@@ -136,8 +134,7 @@ dividends_long <- dividends_wide %>%
                values_to = "dividend_yield") %>% 
   mutate(date = yearmonth(date))
 
-# Market Capitalization 
-
+# Market Capitalization ---------------------------------------------------
 cap_wide <- map(1:32,
                   ~read_excel("Data/sti.xlsx", sheet = .x) %>% 
                         select(date,
@@ -145,27 +142,25 @@ cap_wide <- map(1:32,
                                  contains("market_value"))) %>% 
   reduce(full_join)
 
-
 cap_long <- cap_wide %>% 
   pivot_longer(-date, 
                names_to = "country", 
                values_to = "market_value") %>% 
   mutate(date = yearmonth(date))
   
-cap_availability <- 
-  cap_long %>% 
+cap_availability <- cap_long %>% 
   group_by(country) %>% 
   summarise(non_na_count = sum(!is.na(market_value))/12) %>% 
   arrange(desc(non_na_count))
 
 repl_cap <- c("SWITZERLAND2" = "SWITZERLAND", "JAPAN1" = "JAPAN")
 
-cap_long %>%
+cap_long <- cap_long %>%
   as.data.frame() %>% 
   filter(country != "SWITZERLAND1",
          country != "JAPAN2") %>% 
   mutate(country = recode(country, !!!repl_cap)) %>% 
-  as_tibble() -> cap_long
+  as_tibble()
 
 # Models ------------------------------------------------------------------
 # Join variables
@@ -189,39 +184,23 @@ leakage_set <- to_model %>%
 test <- to_model %>% 
   filter(date >= yearmonth(leakage_end_date))
 
-# functions for model training
+# Functions for VAR model training
 fvar_1 <- as.formula("cagr_10_year ~ cape") 
 fvar_2 <- as.formula("cagr_10_year ~ cape + rate_10_year")
 fvar_3 <- as.formula("cagr_10_year ~ cape + dividend_yield")
 fvar_4 <- as.formula("cagr_10_year ~ cape + rate_10_year + dividend_yield")
 # fvar_4 <- as.formula("cagr_10_year ~ cape + rate_10_year + dividend_yield + market_value")
 
-
-
 # Train different time series models
 models_ts <- training %>% 
   model(ARIMA = ARIMA(cagr_10_year ~ cape + rate_10_year + dividend_yield),
         MEAN = MEAN(cagr_10_year),
-        NAIVE = NAIVE(cagr_10_year),#,
-#       ETS = ETS(cagr_10_year),
-#       RW = RW(cagr_10_year),
-#       NAIVE = NAIVE(cagr_10_year),
-#       SNAIVE = SNAIVE(cagr_10_year),
-#       NNETAR = NNETAR(cagr_10_year),
-#       AR = AR(cagr_10_year),
+        NAIVE = NAIVE(cagr_10_year),
         VAR = VAR(cagr_10_year),
-        VAR1 = VAR(fvar_1),
-        VAR2 = VAR(fvar_2),
-        VAR3 = VAR(fvar_3),
-        VAR4 = VAR(fvar_4))
-        # VAR4 = VAR(fvar_4))
-#       mutate(COMBINATION = (ARIMA + SNAIVE + VAR + NAIVE + RW) / 5,
-#       ARIMA_SNAIVE = (ARIMA + SNAIVE) / 2)
-
-# # Training set accuracy
-# models_ts %>% accuracy()
-# 
-# models_ts %>% print(n = 50)
+        VAR_1 = VAR(fvar_1),
+        VAR_2 = VAR(fvar_2),
+        VAR_3 = VAR(fvar_3),
+        VAR_4 = VAR(fvar_4))
 
 # Make forecasts and remove leakage
 fcast <- models_ts %>% 
@@ -229,25 +208,19 @@ fcast <- models_ts %>%
 
 fcast_no_leakage <- fcast %>% 
   filter(date > yearmonth(leakage_end_date))#,
-# .model == "ARIMA")
-
-# mean_fcast_no_leakage <- fcast %>% 
-#   filter(date > yearmonth("2005-01-01"),
-#          .model == "MEAN(cagr_10_year)")
 
 # Calculate leakage-free accuracies
 acc_no_leakage <- fcast_no_leakage %>% 
   accuracy(bind_rows(training, test)) %>% 
-  select(.model, country, .type, ME, RMSE, MAE, MAPE) %>% 
+  select(.model, country, .type, RMSE, MAE, MAPE) %>% 
   filter(!is.na(MAE)) %>% 
   arrange(MAE) %>% 
   print(n = 100)
 
 # Plot all sets with forecasts
-plot.fcst <- function(model) {
+plot_forecasts <- function(model) {
   fcast %>%
     filter(.model == model) %>% 
-    # filter(country == "AUSTRALIA") %>% 
     autoplot(color = "red", size = 1) +
     autolayer(bind_rows(training, leakage_set, test) %>% 
                 filter(country %in% fcast$country), 
@@ -276,152 +249,38 @@ plot.fcst <- function(model) {
           axis.text.x = element_text(angle = 45))
 }
 
-plot.fcst("ARIMA")
-
+plot_forecasts("ARIMA")
 
 # Calculate and compare accuracies of two different model types
-arima_acc <- acc_no_leakage %>% 
-  filter(.model == "ARIMA")
-
-var_acc <- acc_no_leakage %>% 
-  filter(.model == "VAR")
-
-var1_acc <- acc_no_leakage %>% 
-  filter(.model == "VAR1")
-
-var2_acc <- acc_no_leakage %>% 
-  filter(.model == "VAR2")
-
-var3_acc <- acc_no_leakage %>% 
-  filter(.model == "VAR3")
-
-var4_acc <- acc_no_leakage %>% 
-  filter(.model == "VAR4")
-
-
-non_arima_acc <- acc_no_leakage %>% 
+naive_or_mean_acc <- acc_no_leakage %>% 
   filter(.model == model_to_compare) %>% 
   mutate(MAE_mean = MAE,
          MAPE_mean = MAPE) %>% 
   select(country, MAE_mean, MAPE_mean)
 
-# apply to one central list
-
-acc.calc <- function(model) {
-  
-  model_acc <- get(model)
-  
-  model_acc %<>% 
-    full_join(non_arima_acc) %>% 
-    mutate(MAE_diff = MAE - MAE_mean,
-           MAPE_diff = MAPE - MAPE_mean,
-           MAPE_div = MAPE_mean / MAPE) %>% 
-    arrange(-MAPE_div) %>% 
-    print(n = 50)
-}
-
-res <- lapply(c("arima_acc", "var_acc", "var1_acc", "var2_acc", "var3_acc", "var4_acc"), acc.calc)
-res2 <- do.call(rbind, res)
+# Print accuracies with differences to naive or mean forecast
+model_acc %>% 
+  full_join(naive_or_mean_acc) %>% 
+  mutate(MAE_diff = MAE - MAE_mean,
+         MAPE_diff = MAPE - MAPE_mean,
+         MAPE_div = MAPE_mean / MAPE) %>% 
+  arrange(-MAPE_div) %>% 
+  print(n = 200)
 
 # Average accuracy of every model
 acc_no_leakage %>% 
   group_by(.model) %>% 
   summarise(MAE = mean(MAE, na.rm = TRUE),
-            MAPE = mean(MAPE, na.rm = TRUE),
-            ME = mean(ME, na.rm = T)) %>% 
+            MAPE = mean(MAPE, na.rm = TRUE)) %>% 
   arrange(MAE)
 
-# ------ VAR Models
+# VAR correlations
+ggcorrplot(training %>% 
+             as_tibble() %>% 
+             select(-date, -country) %>% 
+             cor(),
+           hc.order = TRUE,
+           lab = TRUE)
 
-corrplot(cor(training[, -c(1:2)]), method = "square", order = "hclust")
-
-
-plot.fcst("VAR")
-plot.fcst("VAR1")
-plot.fcst("VAR2")
-plot.fcst("VAR3")
-plot.fcst("VAR4")
-# plot.fcst("VAR4")
-
-
-
-# ---- XGB
-
-cv <- trainControl(method = "timeslice", # used timeslice!
-                   initialWindow = 120, # training observations
-                   horizon = 120, # prediction ahead
-                   skip = 120 + 120 - 1, # skip to avoid data leakage (Karo tested it - but hoow?)
-                   fixedWindow = TRUE, # starts at the next observation
-                   allowParallel = TRUE) # parallel backend usage
-
-xgb.training <- function(c) {
-  train(training %>% as_tibble() %>% filter(country == c) %>% select(-date, -cagr_10_year, -country) %>% as.matrix(),
-                   training %>% filter(country == c) %>%  pull(cagr_10_year), 
-                   method = "xgbTree",
-                   trControl = cv)
-  # difficulty is to find fitting parameters for every country (usually the error arises from too low values for horizon or skip)
-  # assign(xgboost, paste0("xgboost_",c))
-}
-
-r1 <- lapply(unique(training$country), xgb.training)
-do.call(rbind, r1)
-
-
-c = "GERMANY"
-
-xgboost <- train(training %>% as_tibble() %>% filter(country == c) %>% select(-date, -cagr_10_year, -country) %>% as.matrix(),
-                 training %>% filter(country == c) %>%  pull(cagr_10_year), 
-                 method = "xgbTree",
-                 trControl = cv)
-
-models <- tibble(name = c("xgboost"),
-                 model = NA,
-                 actual = NA,
-                 pred = NA,
-                 rsq_cv = NA,
-                 mae_cv = NA,
-                 date_train = NA)
-
-# Loop the models, predictions and accuracy measures into the tibble
-for(i in 1:nrow(models)){
-  models$model[i] <- get(models$name[i]) %>% list() # get urges to get the whole content 
-  models$actual[i] <- training %>% filter(country == c) %>% pull(cagr_10_year) %>% list() # pull actual data
-  models$pred[i] <- predict(get(models$name[i]), # get predictions based on actual training data
-                            training %>%
-                              as_tibble() %>% 
-                              filter(country == c) %>% 
-                              select(-date, -cagr_10_year, -country) %>%
-                              as.matrix()) %>%
-    as.vector() %>% 
-    list()
-  models$rsq_cv[i] <- get(models$name[i])$resample$Rsquared %>% mean(na.rm = TRUE)
-  models$mae_cv[i] <- get(models$name[i])$resample$MAE %>% mean(na.rm = TRUE)
-  models$date_train[i] <- training %>% filter(country == c) %>% pull(date) %>% list() # pull dates to make understandable again
-}
-
-# Make a tibble for storing test set results
-models_test <- tibble(name = models$name,
-                      actual_test = NA,
-                      pred_test = NA,
-                      rsq_test = NA,
-                      mae_test = NA,
-                      pred_future = NA,
-                      date_test = NA)
-
-# Loop the models, predictions and accuracy measures into the tibble
-for(i in 1:nrow(models_test)){
-  models_test$actual_test[i] <- test %>% filter(country == c) %>%  pull(cagr_10_year) %>% list()
-  models_test$pred_test[i] <- predict(get(models_test$name[i]),
-                                      test %>% 
-                                        as_tibble() %>% 
-                                        filter(country == c) %>% 
-                                        select(-date, -cagr_10_year, -country) %>%
-                                        as.matrix()) %>%
-    as.vector() %>% 
-    list()
-  models_test$rsq_test[i] <- cor(models_test$actual_test[[i]],
-                                 models_test$pred_test[[i]])^2
-  models_test$mae_test[i] <- mean(abs(models_test$pred_test[[i]] -
-                                        models_test$actual_test[[i]]))
-  models_test$date_test[i] <- test %>% filter(country == c) %>% pull(date) %>% list()
-}
+# Plot all VAR plots
+map(c("VAR", "VAR_1", "VAR_2", "VAR_3", "VAR_4"), ~plot_forecasts(.x))
