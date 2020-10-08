@@ -27,6 +27,12 @@ get_first_date <- function(long_data, predictor, years_or_min){
     select(country, !!predictor := !!years_or_min)
 }
 
+dfs <- c("prices_local_long", "capes_long", "rate_10_year_long",
+         "unemployment_long", "dividends_long")
+predictors <- c("cagr_10_year", "cape", "rate_10_year",
+                "unemployment", "dividend_yield")
+
+
 # First date
 availability_date <- map2(dfs, predictors, ~get_first_date(.x, .y, "min")) %>% 
   reduce(full_join) %>% 
