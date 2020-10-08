@@ -3,6 +3,109 @@ library(dplyr)
 library(janitor)
 library(ggplot2)
 
+# ---- XGB
+
+cv <- trainControl(method = "timeslice", # used timeslice!
+                   initialWindow = 120, # training observations
+                   horizon = 120, # prediction ahead
+                   skip = 120 + 120 - 1, # skip to avoid data leakage (Karo tested it - but hoow?)
+                   fixedWindow = TRUE, # starts at the next observation
+                   allowParallel = TRUE) # parallel backend usage
+
+xgb.training <- function(c) {
+  train(training %>% as_tibble() %>% filter(country == c) %>% select(-date, -cagr_10_year, -country) %>% as.matrix(),
+        training %>% filter(country == c) %>%  pull(cagr_10_year), 
+        method = "xgbTree",
+        trControl = cv)
+  # difficulty is to find fitting parameters for every country (usually the error arises from too low values for horizon or skip)
+  # assign(xgboost, paste0("xgboost_",c))
+}
+
+r1 <- lapply(unique(training$country), xgb.training)
+do.call(rbind, r1)
+
+
+c = "GERMANY"
+
+xgboost <- train(training %>% as_tibble() %>% filter(country == c) %>% select(-date, -cagr_10_year, -country) %>% as.matrix(),
+                 training %>% filter(country == c) %>%  pull(cagr_10_year), 
+                 method = "xgbTree",
+                 trControl = cv)
+
+models <- tibble(name = c("xgboost"),
+                 model = NA,
+                 actual = NA,
+                 pred = NA,
+                 rsq_cv = NA,
+                 mae_cv = NA,
+                 date_train = NA)
+
+# Loop the models, predictions and accuracy measures into the tibble
+for(i in 1:nrow(models)){
+  models$model[i] <- get(models$name[i]) %>% list() # get urges to get the whole content 
+  models$actual[i] <- training %>% filter(country == c) %>% pull(cagr_10_year) %>% list() # pull actual data
+  models$pred[i] <- predict(get(models$name[i]), # get predictions based on actual training data
+                            training %>%
+                              as_tibble() %>% 
+                              filter(country == c) %>% 
+                              select(-date, -cagr_10_year, -country) %>%
+                              as.matrix()) %>%
+    as.vector() %>% 
+    list()
+  models$rsq_cv[i] <- get(models$name[i])$resample$Rsquared %>% mean(na.rm = TRUE)
+  models$mae_cv[i] <- get(models$name[i])$resample$MAE %>% mean(na.rm = TRUE)
+  models$date_train[i] <- training %>% filter(country == c) %>% pull(date) %>% list() # pull dates to make understandable again
+}
+
+# Make a tibble for storing test set results
+models_test <- tibble(name = models$name,
+                      actual_test = NA,
+                      pred_test = NA,
+                      rsq_test = NA,
+                      mae_test = NA,
+                      pred_future = NA,
+                      date_test = NA)
+
+# Loop the models, predictions and accuracy measures into the tibble
+for(i in 1:nrow(models_test)){
+  models_test$actual_test[i] <- test %>% filter(country == c) %>%  pull(cagr_10_year) %>% list()
+  models_test$pred_test[i] <- predict(get(models_test$name[i]),
+                                      test %>% 
+                                        as_tibble() %>% 
+                                        filter(country == c) %>% 
+                                        select(-date, -cagr_10_year, -country) %>%
+                                        as.matrix()) %>%
+    as.vector() %>% 
+    list()
+  models_test$rsq_test[i] <- cor(models_test$actual_test[[i]],
+                                 models_test$pred_test[[i]])^2
+  models_test$mae_test[i] <- mean(abs(models_test$pred_test[[i]] -
+                                        models_test$actual_test[[i]]))
+  models_test$date_test[i] <- test %>% filter(country == c) %>% pull(date) %>% list()
+}
+
+
+
+# -------------------------------------------------------------------------
+
+# Amount of obs
+(training %>% 
+    filter(country == "USA") %>% 
+    pull(date) %>% 
+    max() -
+    training %>% 
+    filter(country == "USA") %>% 
+    pull(date) %>% 
+    min()) / 12 +
+  (test %>% 
+     filter(country == "USA") %>% 
+     pull(date) %>% 
+     max() -
+     test %>% 
+     filter(country == "USA") %>% 
+     pull(date) %>% 
+     min()) / 12
+
 test %>% 
   pivot_wider(id = date, names_from = country, values_from = cagr_10_year) %>%
   View()
@@ -55,3 +158,69 @@ macro <- sapply(excel_sheets("Data/macro_clean.xlsx"),
                   paste(x, colnames(read_xlsx("Data/macro_clean.xlsx", sheet = x)))))
 
 prices <- ""
+
+
+to_model %>% 
+  as_tibble() %>% 
+  ungroup() %>% 
+  group_by(country) %>% 
+  na.omit() %>% 
+  summarise(n = n()) %>% 
+  arrange(-n)
+
+training %>% 
+  as_tibble() %>% 
+  group_by(country) %>% 
+  summarise(duration = (max(date) - min(date)) / 12)
+
+training %>% 
+  as_tibble() %>% 
+  group_by(country) %>% 
+  summarise(duration = (max(date) - min(date)) / 12) %>% 
+  inner_join(arima_acc) %>% 
+  arrange(MAE) %>% 
+  mutate(Duration = ifelse(duration >= 13,
+                           "13 years of data", 
+                           "Less than 13 years of data")) %>% 
+  group_by(Duration) %>% 
+  summarise(Count = n(),
+            RMSE = mean(RMSE),
+            MAE = mean(MAE),
+            MAPE = mean(MAPE))
+
+library(ggrepel)
+
+training %>% 
+  as_tibble() %>% 
+  group_by(country) %>% 
+  summarise(duration = (max(date) - min(date)) / 12) %>% 
+  inner_join(arima_acc) %>% 
+  arrange(MAE) %>% 
+  ggplot(aes(x = duration, y = RMSE, color = country)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "black", alpha = 0.2, size = 0, span = 0.5) +
+  geom_text_repel(aes(label = country)) +
+  scale_x_continuous(breaks = 1:13,
+                     labels = 1:13) +
+  ggtitle("Accuracy of each model vs years of observations") +
+  xlab("Years of observations") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+# Double-checking accuracy calculation
+fcast_no_leakage %>% 
+  accuracy(bind_rows(training, test)) %>% 
+  select(.model, country, .type, RMSE, MAE, MAPE) %>% 
+  filter(!is.na(MAE)) %>% 
+  arrange(MAE)
+
+fcast_no_leakage %>% 
+  as_tibble() %>% 
+  filter(.model == "ARIMA") %>% 
+  select(.model, country, date, .mean) %>% 
+  inner_join(test %>% 
+               select(country, date, cagr_10_year)) %>% 
+  group_by(country) %>% 
+  mutate(resid = cagr_10_year - .mean) %>% 
+  summarise(MAE = MAE(resid))
