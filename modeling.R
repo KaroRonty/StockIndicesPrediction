@@ -6,6 +6,7 @@ library(readxl)
 library(ggplot2)
 library(tsibble)
 library(lubridate)
+library(ggcorrplot)
 
 # How many years ahead to calculate CAGRs for
 lead_years <- 1:10
@@ -71,7 +72,6 @@ value_local_long <- suppressMessages(
       ~add_cagr_columns(value_local_long, .x)) %>% 
     reduce(inner_join))
 
-
 # Growth ------------------------------------------------------------------
 growth_local_wide <- read_excel("Data/dm_gr.xlsx")
 
@@ -96,7 +96,7 @@ capes_wide <- read_excel("Data/cape.xls")
 
 # Pivot into long format and replace missing values with NAs
 capes_long <- capes_wide %>% 
-  pivot_longer(AUSTRALIA:USA,
+  pivot_longer(-date,
                names_to = "country",
                values_to = "cape") %>%
   mutate(cape = ifelse(cape == 0, NA, cape),
@@ -134,8 +134,7 @@ dividends_long <- dividends_wide %>%
                values_to = "dividend_yield") %>% 
   mutate(date = yearmonth(date))
 
-# Market Capitalization 
-
+# Market Capitalization ---------------------------------------------------
 cap_wide <- map(1:32,
                   ~read_excel("Data/sti.xlsx", sheet = .x) %>% 
                         select(date,
@@ -143,27 +142,25 @@ cap_wide <- map(1:32,
                                  contains("market_value"))) %>% 
   reduce(full_join)
 
-
 cap_long <- cap_wide %>% 
   pivot_longer(-date, 
                names_to = "country", 
                values_to = "market_value") %>% 
   mutate(date = yearmonth(date))
   
-cap_availability <- 
-  cap_long %>% 
+cap_availability <- cap_long %>% 
   group_by(country) %>% 
   summarise(non_na_count = sum(!is.na(market_value))/12) %>% 
   arrange(desc(non_na_count))
 
 repl_cap <- c("SWITZERLAND2" = "SWITZERLAND", "JAPAN1" = "JAPAN")
 
-cap_long %>%
+cap_long <- cap_long %>%
   as.data.frame() %>% 
   filter(country != "SWITZERLAND1",
          country != "JAPAN2") %>% 
   mutate(country = recode(country, !!!repl_cap)) %>% 
-  as_tibble() -> cap_long
+  as_tibble()
 
 # Models ------------------------------------------------------------------
 # Join variables
@@ -187,25 +184,23 @@ leakage_set <- to_model %>%
 test <- to_model %>% 
   filter(date >= yearmonth(leakage_end_date))
 
+# Functions for VAR model training
+fvar_1 <- as.formula("cagr_10_year ~ cape") 
+fvar_2 <- as.formula("cagr_10_year ~ cape + rate_10_year")
+fvar_3 <- as.formula("cagr_10_year ~ cape + dividend_yield")
+fvar_4 <- as.formula("cagr_10_year ~ cape + rate_10_year + dividend_yield")
+# fvar_4 <- as.formula("cagr_10_year ~ cape + rate_10_year + dividend_yield + market_value")
+
 # Train different time series models
 models_ts <- training %>% 
   model(ARIMA = ARIMA(cagr_10_year ~ cape + rate_10_year + dividend_yield),
         MEAN = MEAN(cagr_10_year),
-        NAIVE = NAIVE(cagr_10_year))#,
-#       ETS = ETS(cagr_10_year),
-#       RW = RW(cagr_10_year),
-#       NAIVE = NAIVE(cagr_10_year),
-#       SNAIVE = SNAIVE(cagr_10_year),
-#       NNETAR = NNETAR(cagr_10_year),
-#       AR = AR(cagr_10_year),
-#       VAR = VAR(cagr_10_year)) %>% 
-# mutate(COMBINATION = (ARIMA + SNAIVE + VAR + NAIVE + RW) / 5,
-#        ARIMA_SNAIVE = (ARIMA + SNAIVE) / 2)
-
-# # Training set accuracy
-# models_ts %>% accuracy()
-# 
-# models_ts %>% print(n = 50)
+        NAIVE = NAIVE(cagr_10_year),
+        VAR = VAR(cagr_10_year),
+        VAR_1 = VAR(fvar_1),
+        VAR_2 = VAR(fvar_2),
+        VAR_3 = VAR(fvar_3),
+        VAR_4 = VAR(fvar_4))
 
 # Make forecasts and remove leakage
 fcast <- models_ts %>% 
@@ -213,11 +208,6 @@ fcast <- models_ts %>%
 
 fcast_no_leakage <- fcast %>% 
   filter(date > yearmonth(leakage_end_date))#,
-# .model == "ARIMA")
-
-# mean_fcast_no_leakage <- fcast %>% 
-#   filter(date > yearmonth("2005-01-01"),
-#          .model == "MEAN(cagr_10_year)")
 
 # Calculate leakage-free accuracies
 acc_no_leakage <- fcast_no_leakage %>% 
@@ -228,53 +218,54 @@ acc_no_leakage <- fcast_no_leakage %>%
   print(n = 100)
 
 # Plot all sets with forecasts
-fcast %>%
-  filter(.model == "ARIMA") %>% 
-  # filter(country == "AUSTRALIA") %>% 
-  autoplot(color = "red", size = 1) +
-  autolayer(bind_rows(training, leakage_set, test) %>% 
-              filter(country %in% fcast$country), 
-            cagr_10_year,
-            color = "black",
-            size = 1) +
-  annotate("rect", fill = "gray", alpha = 0.25, 
-           xmin = as.Date(split_date), xmax = as.Date(leakage_end_date),
-           ymin = -Inf, ymax = Inf) +
-  geom_hline(yintercept = 1) +
-  scale_x_yearmonth(labels = year(seq.Date(fcast_start_date,
-                                           as.Date(max(test$date)),
-                                           by = "5 years")),
-                    breaks = yearmonth(seq.Date(fcast_start_date,
-                                                as.Date(max(test$date)),
-                                                by = "5 years"))) +
-  facet_wrap(~ country) + 
-  geom_vline(xintercept = as.Date(split_date),
-             color = "gray", linetype = "dashed") +
-  geom_vline(xintercept = as.Date(leakage_end_date),
-             color = "gray", linetype = "dashed") +
-  theme_minimal() +
-  expand_limits(x = fcast_start_date) +
-  theme(legend.position = c(0.95, 0),
-        legend.justification = c(1, 0),
-        axis.text.x = element_text(angle = 45))
+plot_forecasts <- function(model) {
+  fcast %>%
+    filter(.model == model) %>% 
+    autoplot(color = "red", size = 1) +
+    autolayer(bind_rows(training, leakage_set, test) %>% 
+                filter(country %in% fcast$country), 
+              cagr_10_year,
+              color = "black",
+              size = 1) +
+    annotate("rect", fill = "gray", alpha = 0.25, 
+             xmin = as.Date(split_date), xmax = as.Date(leakage_end_date),
+             ymin = -Inf, ymax = Inf) +
+    geom_hline(yintercept = 1) +
+    scale_x_yearmonth(labels = year(seq.Date(fcast_start_date,
+                                             as.Date(max(test$date)),
+                                             by = "5 years")),
+                      breaks = yearmonth(seq.Date(fcast_start_date,
+                                                  as.Date(max(test$date)),
+                                                  by = "5 years"))) +
+    facet_wrap(~ country) + 
+    geom_vline(xintercept = as.Date(split_date),
+               color = "gray", linetype = "dashed") +
+    geom_vline(xintercept = as.Date(leakage_end_date),
+               color = "gray", linetype = "dashed") +
+    theme_minimal() +
+    expand_limits(x = fcast_start_date) +
+    theme(legend.position = c(0.95, 0),
+          legend.justification = c(1, 0),
+          axis.text.x = element_text(angle = 45))
+}
+
+plot_forecasts("ARIMA")
 
 # Calculate and compare accuracies of two different model types
-arima_acc <- acc_no_leakage %>% 
-  filter(.model == "ARIMA")
-
-non_arima_acc <- acc_no_leakage %>% 
+naive_or_mean_acc <- acc_no_leakage %>% 
   filter(.model == model_to_compare) %>% 
   mutate(MAE_mean = MAE,
          MAPE_mean = MAPE) %>% 
   select(country, MAE_mean, MAPE_mean)
 
-arima_acc %>% 
-  full_join(non_arima_acc) %>% 
+# Print accuracies with differences to naive or mean forecast
+model_acc %>% 
+  full_join(naive_or_mean_acc) %>% 
   mutate(MAE_diff = MAE - MAE_mean,
          MAPE_diff = MAPE - MAPE_mean,
          MAPE_div = MAPE_mean / MAPE) %>% 
   arrange(-MAPE_div) %>% 
-  print(n = 50)
+  print(n = 200)
 
 # Average accuracy of every model
 acc_no_leakage %>% 
@@ -282,3 +273,14 @@ acc_no_leakage %>%
   summarise(MAE = mean(MAE, na.rm = TRUE),
             MAPE = mean(MAPE, na.rm = TRUE)) %>% 
   arrange(MAE)
+
+# VAR correlations
+ggcorrplot(training %>% 
+             as_tibble() %>% 
+             select(-date, -country) %>% 
+             cor(),
+           hc.order = TRUE,
+           lab = TRUE)
+
+# Plot all VAR plots
+map(c("VAR", "VAR_1", "VAR_2", "VAR_3", "VAR_4"), ~plot_forecasts(.x))

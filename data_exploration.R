@@ -2,8 +2,11 @@ library(visdat)
 library(glmnet)
 library(tibble)
 library(ggrepel)
+library(stringr)
 library(patchwork)
 library(ggbeeswarm)
+
+# source("modeling.R")
 
 # Custom scaling function that does not return a matrix
 scale <- function(x){
@@ -64,7 +67,7 @@ formulas <- availability_years %>%
 
 # How many features for each model
 formulas %>% 
-  mutate(n = stringr::str_count(formula, "\\+") + 1) %>% 
+  mutate(n = str_count(formula, "\\+") + 1) %>% 
   filter(formula != "") %>% 
   group_by(n) %>% 
   summarise(n = n())
@@ -78,6 +81,10 @@ features_plot_title <- all_features_1st[all_features_1st %in% predictors] %>%
   paste0(collapse = " + ") %>% 
   c(models_ts$ARIMA[[1]]$response[[1]], .) %>% 
   paste0(collapse = " ~ ")
+
+# Calculate accuracy of just the ARIMA model
+arima_acc <- acc_no_leakage %>% 
+  filter(.model == "ARIMA")
 
 # Accuracy vs data availability plot
 training %>%
