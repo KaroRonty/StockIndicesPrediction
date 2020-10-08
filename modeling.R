@@ -348,9 +348,9 @@ plot.fcst("VAR4")
 # ---- XGB
 
 cv <- trainControl(method = "timeslice", # used timeslice!
-                   initialWindow = 60, # training observations
-                   horizon = 30, # prediction ahead
-                   skip = 60 + 30 - 1, # skip to avoid data leakage (Karo tested it - but hoow?)
+                   initialWindow = 120, # training observations
+                   horizon = 120, # prediction ahead
+                   skip = 120 + 120 - 1, # skip to avoid data leakage (Karo tested it - but hoow?)
                    fixedWindow = TRUE, # starts at the next observation
                    allowParallel = TRUE) # parallel backend usage
 
@@ -367,9 +367,10 @@ r1 <- lapply(unique(training$country), xgb.training)
 do.call(rbind, r1)
 
 
+c = "GERMANY"
 
-xgboost <- train(training %>% as_tibble() %>% filter(country == "USA") %>% select(-date, -cagr_10_year, -country) %>% as.matrix(),
-                 training %>% filter(country == "USA") %>%  pull(cagr_10_year), 
+xgboost <- train(training %>% as_tibble() %>% filter(country == c) %>% select(-date, -cagr_10_year, -country) %>% as.matrix(),
+                 training %>% filter(country == c) %>%  pull(cagr_10_year), 
                  method = "xgbTree",
                  trControl = cv)
 
@@ -384,18 +385,18 @@ models <- tibble(name = c("xgboost"),
 # Loop the models, predictions and accuracy measures into the tibble
 for(i in 1:nrow(models)){
   models$model[i] <- get(models$name[i]) %>% list() # get urges to get the whole content 
-  models$actual[i] <- training %>% filter(country == "USA") %>% pull(cagr_10_year) %>% list() # pull actual data
+  models$actual[i] <- training %>% filter(country == c) %>% pull(cagr_10_year) %>% list() # pull actual data
   models$pred[i] <- predict(get(models$name[i]), # get predictions based on actual training data
                             training %>%
                               as_tibble() %>% 
-                              filter(country == "USA") %>% 
+                              filter(country == c) %>% 
                               select(-date, -cagr_10_year, -country) %>%
                               as.matrix()) %>%
     as.vector() %>% 
     list()
   models$rsq_cv[i] <- get(models$name[i])$resample$Rsquared %>% mean(na.rm = TRUE)
   models$mae_cv[i] <- get(models$name[i])$resample$MAE %>% mean(na.rm = TRUE)
-  models$date_train[i] <- training %>% filter(country == "USA") %>% pull(date) %>% list() # pull dates to make understandable again
+  models$date_train[i] <- training %>% filter(country == c) %>% pull(date) %>% list() # pull dates to make understandable again
 }
 
 # Make a tibble for storing test set results
@@ -409,11 +410,11 @@ models_test <- tibble(name = models$name,
 
 # Loop the models, predictions and accuracy measures into the tibble
 for(i in 1:nrow(models_test)){
-  models_test$actual_test[i] <- test %>% filter(country == "USA") %>%  pull(cagr_10_year) %>% list()
+  models_test$actual_test[i] <- test %>% filter(country == c) %>%  pull(cagr_10_year) %>% list()
   models_test$pred_test[i] <- predict(get(models_test$name[i]),
                                       test %>% 
                                         as_tibble() %>% 
-                                        filter(country == "USA") %>% 
+                                        filter(country == c) %>% 
                                         select(-date, -cagr_10_year, -country) %>%
                                         as.matrix()) %>%
     as.vector() %>% 
@@ -422,5 +423,5 @@ for(i in 1:nrow(models_test)){
                                  models_test$pred_test[[i]])^2
   models_test$mae_test[i] <- mean(abs(models_test$pred_test[[i]] -
                                         models_test$actual_test[[i]]))
-  models_test$date_test[i] <- test %>% filter(country == "USA") %>% pull(date) %>% list()
+  models_test$date_test[i] <- test %>% filter(country == c) %>% pull(date) %>% list()
 }
