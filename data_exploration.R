@@ -15,15 +15,20 @@ scale <- function(x){
 get_first_date <- function(long_data, predictor, years_or_min){
   long_data <- get(long_data)
   
+  # Years according to if using the leaded target or not
+  n <- ifelse(grepl(predictor, "cagr"), 0, 10)
+  
   long_data %>% 
     rename(predictor = 3) %>% 
     mutate(dates = ifelse(!is.na(predictor), date, NA)) %>% 
     group_by(country) %>% 
     summarise(min = as.Date(min(dates, na.rm = TRUE), origin = "1970-01-01"),
-              max = as.Date(max(dates, na.rm = TRUE), origin = "1970-01-01") - years(10),
+              max = as.Date(max(dates, na.rm = TRUE), origin = "1970-01-01") - years(n),
               # Without the leakage set
               years = interval(min, max) / years(1) - 10,
               min_yearmonth = yearmonth(min)) %>% 
+    # Replace negative amount of years with zeros
+    mutate(years = ifelse(years < 0, 0, years)) %>% 
     select(country, !!predictor := !!years_or_min)
 }
 
@@ -39,7 +44,32 @@ availability_date <- map2(dfs, predictors, ~get_first_date(.x, .y, "min")) %>%
 availability_years <- map2(dfs, predictors, ~get_first_date(.x, .y, "years")) %>% 
   reduce(full_join) %>% 
   mutate(mean = rowMeans(across(-country), na.rm = TRUE)) %>% 
+  replace(is.na(.), 0) %>% 
   arrange(-mean)
+
+min_years_model <- 7
+
+# Make formulas for each country based on feature availability
+formulas <- availability_years %>% 
+  mutate(cape = ifelse(cape >= min_years_model, "cape", NA),
+         rate_10_year = ifelse(rate_10_year >= min_years_model, "rate_10_year", NA),
+         unemployment = ifelse(unemployment >= min_years_model, "unemployment", NA),
+         dividend_yield = ifelse(dividend_yield >= min_years_model, "dividend_yield", NA)) %>% 
+  unite(formula, 
+        cape, rate_10_year, unemployment, dividend_yield,
+        sep = " + ",
+        na.rm = TRUE) %>% 
+  mutate(formula = ifelse(cagr_10_year <= min_years_model, "", formula)) %>% 
+  select(-mean)
+
+# How many features for each model
+formulas %>% 
+  mutate(n = stringr::str_count(formula, "\\+") + 1) %>% 
+  filter(formula != "") %>% 
+  group_by(n) %>% 
+  summarise(n = n())
+
+# write.csv(availability_years, "availability_years.csv", row.names = FALSE)
 
 # Get the feature names from the first model for the plot title
 all_features_1st <- models_ts$ARIMA[[1]]$fit$par$term
@@ -120,7 +150,6 @@ importances_elastic <- map(models_elastic$models,
   reduce(bind_cols) %>% 
   select(predictor = rowname...1, contains("s0"))
 
-# write.csv(availability_years, "availability_years.csv", row.names = FALSE)
 
 coefs_to_plot <- importances_elastic %>% 
   pivot_longer(-predictor) %>%  
