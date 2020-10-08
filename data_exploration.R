@@ -157,7 +157,6 @@ importances_elastic <- map(models_elastic$models,
   reduce(bind_cols) %>% 
   select(predictor = rowname...1, contains("s0"))
 
-# write.csv(availability_years, "availability_years.csv", row.names = FALSE)
 
 coefs_to_plot <- importances_elastic %>% 
   pivot_longer(-predictor) %>%  
