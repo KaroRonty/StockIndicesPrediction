@@ -3,6 +3,36 @@ library(dplyr)
 library(janitor)
 library(ggplot2)
 
+
+# Unemployment correlation example ----------------------------------------
+
+t4 <- map(c("prices_local_long", "unemployment_long"), ~get(.x)) %>% 
+  reduce(full_join) %>% 
+  select(date, country, !!cagrs, cagr_10_year, unemployment) %>% 
+  as_tsibble(key = "country", index = "date") %>% 
+  select(date, country, cagr_10_year, unemployment) %>% 
+  filter(date >= yearmonth(leakage_end_date))
+
+t3 %>% 
+  as_tibble() %>% 
+  group_by(country) %>% 
+  do(cor = cor(.$cagr_10_year, .$unemployment, use = "pairwise.complete.obs")) %>% 
+  mutate(cor = pluck(cor, 1)) %>% View
+
+# Spain unemployment vs CAGR ----------------------------------------------
+
+t2 <- training %>% inner_join(unemployment_long) %>% 
+  filter(country == "SPAIN")
+
+t2 %>% 
+  as_tibble() %>% 
+  pivot_longer(c(cagr_10_year, unemployment)) %>% 
+  ggplot(aes(x = date, y = value, color = name)) +
+  geom_line() +
+  facet_wrap(~name, scales = "free", nrow = 2) +
+  ggtitle("10-year CAGR vs unemployment rate in Spain") +
+  theme_minimal()
+
 # ---- XGB
 
 cv <- trainControl(method = "timeslice", # used timeslice!
