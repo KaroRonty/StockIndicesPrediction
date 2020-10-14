@@ -75,8 +75,9 @@ xgboost_res <- xgboost_wf %>%
 
 xgboost_res %>% collect_metrics() %>% print(n = 250)
 
-xgboost_fit <- fit(xgboost_wf, xgboost_prepared %>% 
-                     juice())
+xgboost_fit <- xgboost_wf %>% finalize_workflow(xgboost_res %>%
+                                                  select_best("rmse")) %>% 
+  fit(xgboost_prepared %>% juice())
 
 xgboost_fit %>% 
   pull_workflow_fit() %>% 
