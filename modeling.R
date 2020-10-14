@@ -26,8 +26,7 @@ model_to_compare <- "NAIVE"
 dfs <- c("prices_local_long", "capes_long", "rate_10_year_long",
          "unemployment_long", "dividends_long")
 cagrs <- paste0("cagr_", lead_years, "_year")
-predictors <- c("cape", "rate_10_year",
-                "unemployment", "dividend_yield")
+predictors <- c("cape", "rate_10_year", "dividend_yield") # "unemployment", 
 
 # Prices ------------------------------------------------------------------
 prices_local_wide <- read_excel("Data/loc2.xlsx")
@@ -177,7 +176,7 @@ max_data_date <- to_model_exploration %>%
   pull(date) %>% 
   max()
 
-output_models <- function(cagr){
+output_models <- function(cagr, countries){
   # Get numeric value from CAGR name
   y <- suppressMessages(extract_numeric(cagr))
   
@@ -189,6 +188,7 @@ output_models <- function(cagr){
   leakage_start_date <- leakage_end_date - years(y)
   
   to_model <- to_model_exploration %>% 
+    filter(country %in% countries) %>% # TODO
     select(date, country, !!cagrs, !!predictors) %>% 
     na.omit()
   
@@ -249,11 +249,22 @@ output_models <- function(cagr){
     select(country, source, ARIMA, MEAN, NAIVE)
 }
 
+plan(multisession)
+
+countries <- c("CANADA", "USA", "UK", "NETHERLANDS", "GERMANY", "AUSTRALIA", "SPAIN")
 # 28 sec
 all_cagr_accuracies <- future_map(cagrs,
-                                  ~output_models(.x),
+                                  ~output_models(.x, countries),
                                   .progress = TRUE) %>% 
   reduce(full_join)
+
+# Get the feature names from the first model for the plot title
+all_features_1st <- models_ts$ARIMA[[1]]$fit$par$term
+
+features_plot_title <- all_features_1st[all_features_1st %in% predictors] %>% 
+  paste0(collapse = " + ") %>% 
+  c(models_ts$ARIMA[[1]]$response[[1]], .) %>% 
+  paste0(collapse = " ~ ")
 
 # Plot mean accuracies of different models
 all_cagr_accuracies %>% 
@@ -265,14 +276,16 @@ all_cagr_accuracies %>%
   geom_beeswarm(aes(color = Model, group = Model), alpha = 0.15) +
   geom_smooth(aes(color = Model, group = Model), fill = NA) +
   coord_cartesian(ylim = c(0, 20)) +
-  scale_y_continuous(breaks = seq(0, 30, 5), labels = seq(0, 30, 5)) +
+  scale_y_continuous(breaks = seq(0, 30, 2.5), labels = seq(0, 30, 2.5)) +
   scale_x_continuous(breaks = 1:10, labels = 1:10) +
   scale_colour_manual(name = "Models",
                       values = c("ARIMA" = "#00BFC4",
                                  "MEAN" = "Red",
                                  "NAIVE" = "Black")) +
   ggtitle("Forecast period vs accuracy for all countries with data",
-          subtitle = "Different test set periods for different CAGR forecast periods") +
+          subtitle = paste("Different test set periods for different CAGR",
+          "forecast periods")) +
+  labs(caption = features_plot_title) +
   xlab("CAGR forecast period (years ahead)") +
   ylab("Average MAPE") +
   theme_minimal() +
