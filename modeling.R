@@ -24,7 +24,7 @@ model_to_compare <- "NAIVE"
 
 # Data frames and corresponding predictors to use in mapping
 dfs <- c("prices_local_long", "capes_long", "rate_10_year_long",
-         "unemployment_long", "dividends_long")
+         "dividends_long") # "unemployment_long",
 cagrs <- paste0("cagr_", lead_years, "_year")
 predictors <- c("cape", "rate_10_year", "dividend_yield") # "unemployment", 
 
@@ -135,7 +135,7 @@ ex_wide <- read_excel("Data/macro_m.xlsx", sheet = "exr") # exchange rates
 ex_long <- ex_wide %>% 
   pivot_longer(-date, 
                names_to = "country", 
-               values_to = "exchangerates") %>% 
+               values_to = "exchange_rate") %>% 
   mutate(date = yearmonth(date))
 
 
@@ -224,7 +224,7 @@ output_models <- function(cagr, countries){
     filter(date >= yearmonth(leakage_end_date))
   
   # Formulas for mean, naive and ARIMA
-  arima_f <- as.formula(paste(cagr, "~ cape + rate_10_year + dividend_yield"))
+  arima_f <- as.formula(paste(cagr, features_formula))
   
   # Formulas for VAR model training
   var_f_1 <- as.formula(paste(cagr, "~ cape")) 
@@ -271,19 +271,12 @@ output_models <- function(cagr, countries){
 plan(multisession)
 
 countries <- c("CANADA", "USA", "UK", "NETHERLANDS", "GERMANY", "AUSTRALIA", "SPAIN")
+features_formula <-  "~ cape + rate_10_year + dividend_yield"
 # 28 sec
 all_cagr_accuracies <- future_map(cagrs,
                                   ~output_models(.x, countries),
                                   .progress = TRUE) %>% 
   reduce(full_join)
-
-# Get the feature names from the first model for the plot title
-all_features_1st <- models_ts$ARIMA[[1]]$fit$par$term
-
-features_plot_title <- all_features_1st[all_features_1st %in% predictors] %>% 
-  paste0(collapse = " + ") %>% 
-  c(models_ts$ARIMA[[1]]$response[[1]], .) %>% 
-  paste0(collapse = " ~ ")
 
 # Plot mean accuracies of different models
 all_cagr_accuracies %>% 
@@ -304,7 +297,7 @@ all_cagr_accuracies %>%
   ggtitle("Forecast period vs accuracy for all countries with data",
           subtitle = paste("Different test set periods for different CAGR",
           "forecast periods")) +
-  labs(caption = features_plot_title) +
+  labs(caption = features_formula) +
   xlab("CAGR forecast period (years ahead)") +
   ylab("Average MAPE") +
   theme_minimal() +
