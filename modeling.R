@@ -102,7 +102,7 @@ capes_long <- capes_wide %>%
   mutate(cape = ifelse(cape == 0, NA, cape),
          date = yearmonth(date))
 
-# Macro -------------------------------------------------------------------
+# Unemployment -------------------------------------------------------------------
 unemployment_wide <- read_excel("Data/macro_m.xlsx", sheet = "unr_sa") # unr_na
 
 unemployment_long <- unemployment_wide %>% 
@@ -118,6 +118,25 @@ rate_10_year_long <- rate_10_year_wide %>%
                names_to = "country", 
                values_to = "rate_10_year") %>% 
   mutate(date = yearmonth(date))
+
+# CPI -------------------------------------------------------------------
+cpi_wide <- read_excel("Data/macro_m.xlsx", sheet = "cpi") # cpi
+
+cpi_long <- cpi_wide %>% 
+  pivot_longer(-date, 
+               names_to = "country", 
+               values_to = "cpi") %>% 
+  mutate(date = yearmonth(date))
+
+# Exchange Rates -------------------------------------------------------------------
+ex_wide <- read_excel("Data/macro_m.xlsx", sheet = "exr") # exchange rates
+
+ex_long <- ex_wide %>% 
+  pivot_longer(-date, 
+               names_to = "country", 
+               values_to = "exchangerates") %>% 
+  mutate(date = yearmonth(date))
+
 
 # Dividends ---------------------------------------------------------------
 # Get dividend yields from each sheet, rename according to country and combine
