@@ -280,13 +280,17 @@ all_cagr_accuracies <- future_map(cagrs,
 
 # Plot mean accuracies of different models
 all_cagr_accuracies %>% 
+  group_by(source) %>% 
   pivot_longer(-country:-source) %>% 
   rename(Country = country,
          Model = name) %>% 
+  group_by(Model) %>% 
   mutate(horizon = extract_numeric(source)) %>% 
+  group_by(Model, horizon) %>% 
+  mutate(mean = mean(value)) %>% 
   ggplot(aes(horizon, value, color = Model, group = Model)) +
   geom_beeswarm(aes(color = Model, group = Model), alpha = 0.15) +
-  geom_smooth(aes(color = Model, group = Model), fill = NA) +
+  geom_line(aes(y = mean, color = Model, group = Model)) +
   coord_cartesian(ylim = c(0, 20)) +
   scale_y_continuous(breaks = seq(0, 30, 2.5), labels = seq(0, 30, 2.5)) +
   scale_x_continuous(breaks = 1:10, labels = 1:10) +
@@ -296,7 +300,7 @@ all_cagr_accuracies %>%
                                  "NAIVE" = "Black")) +
   ggtitle("Forecast period vs accuracy for all countries with data",
           subtitle = paste("Different test set periods for different CAGR",
-          "forecast periods")) +
+                           "forecast periods")) +
   labs(caption = features_formula) +
   xlab("CAGR forecast period (years ahead)") +
   ylab("Average MAPE") +
