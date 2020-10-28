@@ -1,12 +1,34 @@
 library(visdat)
 library(glmnet)
 library(tibble)
+library(feasts)
 library(ggrepel)
 library(stringr)
 library(patchwork)
 library(ggbeeswarm)
 
 # source("modeling.R")
+
+# ACF and PACF plots
+acf_p_1 <- models_ts %>% 
+  residuals() %>% 
+  ACF() %>% 
+  autoplot() + 
+  ggtitle("ACF of residuals",
+          subtitle = "All residuals seem stationary") + 
+  labs(caption = features_formula) +
+  theme_minimal()
+
+acf_p_2 <- models_ts %>% 
+  residuals() %>% 
+  PACF() %>% 
+  autoplot() + 
+  ggtitle("PACF of residuals",
+          subtitle = "All residuals seem stationary") + 
+  labs(caption = features_formula) +
+  theme_minimal()
+
+acf_p_1 + acf_p_2
 
 # Custom scaling function that does not return a matrix
 scale <- function(x){

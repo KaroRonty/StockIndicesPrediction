@@ -265,7 +265,8 @@ output_models <- function(cagr, countries){
   acc_no_leakage %>% 
     pivot_wider(id = country, names_from = .model, values_from = MAPE) %>% 
     mutate(source = !!cagr) %>% 
-    select(country, source, ARIMA, MEAN, NAIVE)
+    select(country, source, ARIMA, MEAN, NAIVE) %>% 
+    arrange(ARIMA) # FIXME
 }
 
 plan(multisession)
@@ -335,7 +336,7 @@ plot_forecasts <- function(model) {
               color = "black",
               size = 1) +
     annotate("rect", fill = "gray", alpha = 0.25, 
-             xmin = as.Date(split_date), xmax = as.Date(leakage_end_date),
+             xmin = as.Date(leakage_start_date), xmax = as.Date(leakage_end_date),
              ymin = -Inf, ymax = Inf) +
     geom_hline(yintercept = 1) +
     scale_x_yearmonth(labels = year(seq.Date(fcast_start_date,
@@ -345,7 +346,7 @@ plot_forecasts <- function(model) {
                                                   as.Date(max(test$date)),
                                                   by = "5 years"))) +
     facet_wrap(~ country) + 
-    geom_vline(xintercept = as.Date(split_date),
+    geom_vline(xintercept = as.Date(leakage_start_date),
                color = "gray", linetype = "dashed") +
     geom_vline(xintercept = as.Date(leakage_end_date),
                color = "gray", linetype = "dashed") +
@@ -359,18 +360,30 @@ plot_forecasts <- function(model) {
 plot_forecasts("ARIMA")
 
 # Calculate and compare accuracies of two different model types
+# FIXME other models are missing and have to be manually added
 naive_or_mean_acc <- acc_no_leakage %>% 
   filter(.model == model_to_compare) %>% 
-  mutate(MAE_mean = MAE,
-         MAPE_mean = MAPE) %>% 
-  select(country, MAE_mean, MAPE_mean)
+  mutate(MAE_naive = MAE,
+         MAPE_naive = MAPE) %>% 
+  select(country, MAE_naive, MAPE_naive)
+
+# Print mean accuracies of different models
+acc_no_leakage %>% 
+  full_join(naive_or_mean_acc) %>% 
+  mutate(MAE_diff = MAE - MAE_naive,
+         MAPE_diff = MAPE - MAPE_naive,
+         MAPE_div = MAPE_naive / MAPE) %>% 
+  group_by(.model) %>% 
+  summarise_at(vars(RMSE, MAE, MAPE), mean) %>% 
+  arrange(MAPE)
 
 # Print accuracies with differences to naive or mean forecast
 acc_no_leakage %>% 
   full_join(naive_or_mean_acc) %>% 
-  mutate(MAE_diff = MAE - MAE_mean,
-         MAPE_diff = MAPE - MAPE_mean,
-         MAPE_div = MAPE_mean / MAPE) %>% 
+  mutate(MAE_diff = MAE - MAE_naive,
+         MAPE_diff = MAPE - MAPE_naive,
+         MAPE_div = MAPE_naive / MAPE) %>% 
+  filter(.model == "ARIMA") %>% 
   arrange(-MAPE_div) %>% 
   print(n = 200)
 
