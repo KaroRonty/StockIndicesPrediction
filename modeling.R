@@ -23,10 +23,9 @@ fcast_start_date <- as.Date("1980-01-01")
 model_to_compare <- "NAIVE"
 
 # Data frames and corresponding predictors to use in mapping
-dfs <- c("prices_local_long", "capes_long", "rate_10_year_long",
-         "dividends_long") # "unemployment_long",
+dfs <- c("capes_long", "prices_local_long", "rate_10_year_long", "unemployment_long", "dividends_long")
 cagrs <- paste0("cagr_", lead_years, "_year")
-predictors <- c("cape", "rate_10_year", "dividend_yield") # "unemployment", 
+predictors <- c("cape", "cagr_10_year", "rate_10_year", "unemployment", "dividend_yield")
 
 # Prices ------------------------------------------------------------------
 prices_local_wide <- read_excel("Data/loc2.xlsx")
@@ -38,7 +37,8 @@ prices_local_long <- prices_local_wide %>%
                values_to = "price") %>% 
   group_by(country) %>% 
   mutate(price = ifelse(price == 0, NA, price),
-         date = yearmonth(date))
+         date = yearmonth(date)) %>% 
+  as_tsibble(index = date, key = country)
 
 # Function for making leaded columns for CAGR
 add_cagr_columns <- function(df, lead){
@@ -53,6 +53,7 @@ prices_local_long <- suppressMessages(
   map(lead_years,
       ~add_cagr_columns(prices_local_long, .x)) %>% 
     reduce(inner_join))
+
 
 # Value -------------------------------------------------------------------
 value_local_wide <- read_excel("Data/dm_vl.xlsx")
@@ -307,6 +308,172 @@ all_cagr_accuracies %>%
   ylab("Average MAPE") +
   theme_minimal() +
   theme(legend.position = "bottom")
+
+# FEATURE SELECTION FOR CURRENT VARIABLES ----
+
+# list all predictor & formula combinations
+predictor_lm <- c("cape", "dividend_yield", "rate_10_year", "unemployment")
+
+
+create_formula <- function(pr) {
+  
+  
+  # do.call for combination generation to prevent map_chr issues
+  combinations <- do.call("c", map(seq_along(pr), 
+                                   ~combn(pr, .x, FUN = list)))
+  
+  # define rhs of combinations and apply regex-cleaning
+  rhs <- map_chr(seq_along(combinations), ~ paste(gsub("[,]", " + ", 
+                                                       gsub("[^A-Za-z0-9,;._-]","", 
+                                                            gsub("[\\c]\\(", "", combinations[.]))), collapse = " + "))
+  # define cagr goal for lhs
+  lhs <- as.character(cagrs[5])
+  
+  # paste lhs and rhs together
+  formulas_fs <- map(paste(lhs, rhs, sep = " ~ "), as.character) %>% 
+    flatten_chr() 
+  
+}
+
+formulas_fs <- create_formula(predictor_lm)
+
+# create short formula for readability
+predictor_lm_simple <- substr(predictor_lm, start = 1, stop = 3)
+formulas_fs_simple <- create_formula(predictor_lm_simple)
+
+# recycled function from above adjusted for multiple feature combination runs
+
+feature_selection <- function(cagr, countries){
+  # Get numeric value from CAGR name
+  y <- suppressMessages(extract_numeric(cagr))
+  
+  # Test set is has a maximum length based on CAGR years
+  leakage_end_date <- max(as.Date(max_data_date) - months(187), 
+                          as.Date(max_data_date) -  years(10) -
+                            years(y))
+  
+  leakage_start_date <- leakage_end_date - years(y)
+  
+  to_model <- to_model_exploration %>% 
+    filter(country %in% countries) %>% # TODO
+    select(date, country, !!cagrs, !!predictors) %>% 
+    na.omit()
+  
+  # FIXME training set according to CAGR years
+  # Split into different sets
+  training <- to_model %>% 
+    filter(date < yearmonth(leakage_start_date))
+  
+  leakage_set <- to_model %>% 
+    filter(date >= yearmonth(leakage_start_date),
+           date < yearmonth(leakage_end_date))
+  
+  test <- to_model %>% 
+    filter(date >= yearmonth(leakage_end_date))
+  
+  # Formulas for mean, naive and ARIMA
+  # train 
+  models_ts <- map(formulas_fs, ~training %>% 
+                     model(ARIMA = ARIMA(as.formula(.x))))
+  
+  
+  # Formulas for VAR model training
+  var_f_1 <- as.formula(paste(cagr, "~ cape")) 
+  var_f_2 <- as.formula(paste(cagr, "~ cape + rate_10_year"))
+  var_f_3 <- as.formula(paste(cagr, "~ cape + dividend_yield"))
+  var_f_4 <- as.formula(paste(cagr, "~ cape + rate_10_year + dividend_yield"))
+  # fvar_4 <- as.formula("cagr_10_year ~ cape + rate_10_year + dividend_yield + market_value")
+  
+  # Train different time series models
+  
+  # Train mean and naive models
+  models_naive_mean <- paste0("models_mean_cagr_",
+                              y,
+                              " <- training %>% model(MEAN = MEAN(",
+                              cagrs[y],
+                              "), NAIVE = NAIVE(", 
+                              cagrs[y],
+                              "))") %>% 
+    parse(text = .) %>% 
+    eval()
+  
+  # Make forecasts and remove leakage
+  # in order to validate accuracies, one needs already the winners 
+  fcast_no_leakage <- map(1:length(formulas_fs), ~models_ts[[.x]] %>% 
+                            forecast(test) %>% 
+                            filter(date > yearmonth(leakage_end_date)) %>%
+                            mutate(.formula = paste(formulas_fs_simple[.x])) %>% 
+                            bind_rows(models_naive_mean %>%
+                                        forecast(test) %>% 
+                                        filter(date > yearmonth(leakage_end_date))))
+  
+  # Calculate leakage-free accuracies
+  acc_no_leakage <- map(1:length(formulas_fs), ~fcast_no_leakage[[.x]] %>% 
+                          accuracy(bind_rows(training, test)) %>% 
+                          select(.model, country, .type, RMSE, MAE, MAPE) %>% 
+                          mutate(.formula = paste(formulas_fs_simple[.x]),
+                                 .predictors = (str_count(.formula, pattern = "\\+") + 1)) %>% 
+                          filter(!is.na(MAE))) %>% 
+    reduce(full_join) 
+  
+  
+}
+
+# parallel
+plan(multisession)
+countries <- c("CANADA", "USA", "UK", "NETHERLANDS", "GERMANY", "AUSTRALIA", "SPAIN")
+
+all_feature_accuracies <- future_map(cagrs[5], # fixed value
+                                  ~feature_selection(.x, countries),
+                                  .progress = TRUE) %>% 
+  reduce(full_join)
+
+# check best models per country
+all_feature_accuracies %>% 
+  group_by(country) %>% 
+  arrange(country, MAPE) %>% 
+  slice_min(1)
+
+# check for complicated models
+all_feature_accuracies %>% 
+  filter(.model == "ARIMA",
+         .predictors > 3) 
+
+# FEATURE SELECTION on test set -----
+
+# MAPE per country and per predictor combination
+all_feature_accuracies %>% 
+  arrange(country, .model, MAPE) %>% 
+  filter(.model == "ARIMA") %>% 
+  select(country, MAPE, .formula) %>% 
+  ggplot(aes(x = .formula, y = MAPE, group = 1)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~country) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1))
+
+# mean MAPE per predictor combination (ordered by # of predictors)
+all_feature_accuracies %>% 
+  filter(.model == "ARIMA") %>% 
+  arrange(.predictors, .formula) %>% 
+  mutate(.formula = factor(.formula, levels = formulas_fs_simple)) %>% 
+  select(country, MAPE, .formula, .predictors) %>% 
+  group_by(.formula) %>% 
+  mutate(mean_MAPE = mean(MAPE)) %>% 
+  ggplot() +
+  geom_line(aes(x = .formula, y = mean_MAPE, group = 1), lwd = 0.5, col = "darkorange") +
+  geom_point(aes(x = .formula, y = MAPE, col = country), size = 1) + 
+  scale_color_brewer(palette="PuBu") +
+  labs(title = "Ordered MAPE scores, validated on test set",
+       subtitle = "High fluctuation between number of predictors utilized, no clear trend visible",
+       x = "Formula",
+       y = "Avrg. MAPE per Formula") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+        legend.position = "none")
+
+# ----
 
 # FIXME everything below this line
 
