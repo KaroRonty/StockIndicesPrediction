@@ -292,6 +292,40 @@ slice_acc <- future_map(cagrs,
                         .progress = TRUE) %>% 
   reduce(bind_rows)
 
+slice_acc_to_plot <- slice_acc %>% 
+  pivot_longer(ARIMA:NAIVE) %>% 
+  group_by(end, source, slice, name) %>% 
+  summarise(mean = mean(value)) %>% 
+  ungroup() %>% 
+  mutate(source = factor(source,
+                         levels = paste0("cagr_", 1:10, "_year")),
+         name = factor(name, c("MEAN", "NAIVE", "ARIMA")))
+
+slice_acc_to_plot %>% 
+  ggplot(aes(end, mean, color = name)) +
+  geom_line(alpha = 0.5) +
+  geom_point(data = slice_acc_to_plot %>% 
+               group_by(name, source) %>% 
+               summarize(mean_mean = mean(mean),
+                         date_max = max(end)),
+             aes(date_max + months(14), mean_mean),
+             shape = "\u2014", size = 5, alpha = 0.4) +
+  facet_wrap(~source, scales = "free") +
+  ggtitle("Forecast accuracy vs time of forecast",
+          subtitle = "Means for each model as a horizontal line") +
+  xlab("Forecast timepoint") +
+  ylab("Average MAPE") +
+  theme_minimal() +
+  theme(legend.position = c(0.85, -0.1),
+        legend.justification = c(1, 0),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.caption = element_text(hjust = 0, lineheight = 0.5)) +
+  scale_colour_manual(name = "Model",
+                      values = c("ARIMA" = "#00BFC4",
+                                 "MEAN" = "red",
+                                 "NAIVE" = "black"))
+
+# FIXME everything below this line
 # Plot mean accuracies of different models
 all_cagr_accuracies %>% 
   group_by(source) %>% 
