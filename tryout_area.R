@@ -1,3 +1,39 @@
+# RANDOM-WALK ESTIMATED PRICES
+
+# Calculate random-walk based price
+rw <- prices_local_long %>% model(rw = RW(price ~ drift()))
+prices_local_long <- prices_local_long %>% left_join(rw %>% fitted() %>% 
+                                                       select(.fitted)) %>% 
+  select(-.model)
+
+rw_b <- prices_local_long %>% model(rw = RW(price ~ drift()))
+prices_local_long <- prices_local_long %>% left_join(rw_b %>% fitted() %>% 
+                                                       select(.fitted)) %>% 
+  select(-.model)
+
+prices_local_long <- prices_local_long %>% 
+  mutate(diff_corr_price = difference(.fitted))
+
+
+prices_local_long %>%
+  select(price, .fitted, country) %>% 
+  filter(date > as.Date("1990-01-01"),
+         country %in% countries) %>% 
+  ggplot(aes(x = date)) +
+  geom_line(aes(y = price), color = "red") +
+  geom_line(aes(y = .fitted), color = "navy") +
+  facet_wrap(~country)
+
+to_model %>% filter(country == "AUSTRALIA") %>% 
+  select(date, cagr_5_year, cape, dividend_yield, rate_10_year) %>% 
+  ggplot(aes(x = date)) + 
+  geom_line(aes(y = cagr_5_year), col = "green") + 
+  geom_line(aes(y = cape), col = "blue") + 
+  geom_line(aes(y = rate_10_year), col = "black") + 
+  geom_line(aes(y = dividend_yield), col = "orange") 
+
+
+# MODEL FITTING FOR DIFFERENT CAGR COMBINATIONS (Mid-October)
 
 full_training <- training %>% 
   full_join(prices_local_long) %>% 
@@ -39,8 +75,11 @@ train_mean_cagr <- function(data, cc, cagr) {
   mod <- model(data %>% filter(country == cc),
                MEAN = MEAN(cagr))
   fcasts <- mod %>%
-    forecast(full_test)
-  acc <- fcasts %>% accuracy(full_test)
+    forecast(full_test %>% filter(country == cc))
+  acc <- fcasts %>% accuracy(bind_rows(full_training %>% filter(country == cc),
+                                       full_test %>%  filter(country == cc))) %>% 
+    select(.model, country, .type, RMSE, MAE, MAPE) %>% 
+    filter(!is.na(MAE))
 }
 
 t3 <- purrr::pmap(expand.grid(unique(full_training$country),
