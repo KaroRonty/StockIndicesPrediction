@@ -196,20 +196,22 @@ max_data_date <- to_model_exploration %>%
   pull(date) %>% 
   max()
 
-output_models <- function(cagr, countries){
+output_models <- function(cagr, countries, s){
   # Get numeric value from CAGR name
   y <- suppressMessages(extract_numeric(cagr))
   
   # Test set is has a maximum length based on CAGR years
   leakage_end_date <- max(as.Date(max_data_date) - months(187), 
                           as.Date(max_data_date) -  years(10) -
-                            years(y))
+                            years(y)) + months(s)
   
   leakage_start_date <- leakage_end_date - years(y)
   
   to_model <- to_model_exploration %>% 
     filter(country %in% countries) %>% # TODO
-    select(date, country, !!cagrs, !!predictors) %>% 
+    select(date, country, !!cagr, !!predictors) %>% 
+    # group_by(country) %>% # FIXME
+    # mutate(lag_cagr = lag(cagr_5_year, 1)) %>%  #FIXME
     na.omit()
   
   # FIXME training set according to CAGR years
@@ -222,64 +224,109 @@ output_models <- function(cagr, countries){
            date < yearmonth(leakage_end_date))
   
   test <- to_model %>% 
-    filter(date >= yearmonth(leakage_end_date))
+    filter(date == yearmonth(leakage_end_date)) # TODO
   
-  # Formulas for mean, naive and ARIMA
-  arima_f <- as.formula(paste(cagr, features_formula))
-  
-  # Formulas for VAR model training
-  var_f_1 <- as.formula(paste(cagr, "~ cape")) 
-  var_f_2 <- as.formula(paste(cagr, "~ cape + rate_10_year"))
-  var_f_3 <- as.formula(paste(cagr, "~ cape + dividend_yield"))
-  var_f_4 <- as.formula(paste(cagr, "~ cape + rate_10_year + dividend_yield"))
-  # fvar_4 <- as.formula("cagr_10_year ~ cape + rate_10_year + dividend_yield + market_value")
-  
-  # Train different time series models
-  models_ts <- training %>% 
-    model(ARIMA = ARIMA(arima_f)) #,
-  
-  # Train mean and naive models
-  models_naive_mean <- paste0("models_mean_cagr_",
-                              y,
-                              " <- training %>% model(MEAN = MEAN(",
-                              cagrs[y],
-                              "), NAIVE = NAIVE(", 
-                              cagrs[y],
-                              "))") %>% 
-    parse(text = .) %>% 
-    eval()
-  
-  # Make forecasts and remove leakage
-  fcast_no_leakage <- models_ts %>% 
-    forecast(test) %>% 
-    filter(date > yearmonth(leakage_end_date)) %>% 
-    bind_rows(models_naive_mean %>% 
-                forecast(test) %>% 
-                filter(date > yearmonth(leakage_end_date)))
-  
-  # Calculate leakage-free accuracies
-  acc_no_leakage <- fcast_no_leakage %>% 
-    accuracy(bind_rows(training, test)) %>% 
-    select(.model, country, .type, RMSE, MAE, MAPE) %>% 
-    filter(!is.na(MAE))
-  
-  acc_no_leakage %>% 
-    pivot_wider(id = country, names_from = .model, values_from = MAPE) %>% 
-    mutate(source = !!cagr) %>% 
-    select(country, source, ARIMA, MEAN, NAIVE) %>% 
-    arrange(ARIMA) # FIXME
+  if(nrow(test) != 0){
+    
+    # Formulas for mean, naive and ARIMA
+    arima_f <- as.formula(paste(cagr, features_formula))
+    
+    # Formulas for VAR model training
+    var_f_1 <- as.formula(paste(cagr, "~ cape")) 
+    var_f_2 <- as.formula(paste(cagr, "~ cape + rate_10_year"))
+    var_f_3 <- as.formula(paste(cagr, "~ cape + dividend_yield"))
+    var_f_4 <- as.formula(paste(cagr, "~ cape + rate_10_year + dividend_yield"))
+    # fvar_4 <- as.formula("cagr_10_year ~ cape + rate_10_year + dividend_yield + market_value")
+    
+    # Train different time series models
+    models_ts <- training %>% 
+      model(ARIMA = ARIMA(arima_f)) # cagr_10_year ~ cape + rate_10_year + dividend_yield
+    
+    # Train mean and naive models
+    models_naive_mean <- paste0("models_mean_cagr_",
+                                y,
+                                " <- training %>% model(MEAN = MEAN(",
+                                cagrs[y],
+                                "), NAIVE = NAIVE(", 
+                                cagrs[y],
+                                "))") %>% 
+      parse(text = .) %>% 
+      eval()
+    
+    # Make forecasts and remove leakage
+    fcast_no_leakage <- models_ts %>% 
+      forecast(test) %>% 
+      filter(date == yearmonth(leakage_end_date)) %>% 
+      bind_rows(models_naive_mean %>% 
+                  forecast(test) %>% 
+                  filter(date == yearmonth(leakage_end_date)))
+    
+    # Calculate leakage-free accuracies
+    acc_no_leakage <- fcast_no_leakage %>% 
+      accuracy(bind_rows(training, test)) %>% 
+      select(.model, country, .type, RMSE, MAE, MAPE) %>% 
+      filter(!is.na(MAE))
+    
+    acc_no_leakage %>% 
+      pivot_wider(id = country, names_from = .model, values_from = MAPE) %>% 
+      mutate(source = !!cagr,
+             slice = !!s,
+             start = leakage_start_date,
+             end = leakage_end_date) %>% 
+      select(country, source, slice, start, end, ARIMA, MEAN, NAIVE) %>% 
+      arrange(ARIMA) #%>% pull(ARIMA) %>% mean # FIXME
+  }
 }
 
 plan(multisession)
 
 countries <- c("CANADA", "USA", "UK", "NETHERLANDS", "GERMANY", "AUSTRALIA", "SPAIN")
 features_formula <-  "~ cape + rate_10_year + dividend_yield"
-# 28 sec
-all_cagr_accuracies <- future_map(cagrs,
-                                  ~output_models(.x, countries),
-                                  .progress = TRUE) %>% 
-  reduce(full_join)
 
+# 1:20 h
+# TODO combine with looping
+slice_acc <- future_map(cagrs,
+                        ~future_map(0:120,
+                                    function(.y) output_models(.x,
+                                                               countries,
+                                                               .y)),
+                        .progress = TRUE) %>% 
+  reduce(bind_rows)
+
+slice_acc_to_plot <- slice_acc %>% 
+  pivot_longer(ARIMA:NAIVE) %>% 
+  group_by(end, source, slice, name) %>% 
+  summarise(mean = mean(value)) %>% 
+  ungroup() %>% 
+  mutate(source = factor(source,
+                         levels = paste0("cagr_", 1:10, "_year")),
+         name = factor(name, c("MEAN", "NAIVE", "ARIMA")))
+
+slice_acc_to_plot %>% 
+  ggplot(aes(end, mean, color = name)) +
+  geom_line(alpha = 0.5) +
+  geom_point(data = slice_acc_to_plot %>% 
+               group_by(name, source) %>% 
+               summarize(mean_mean = mean(mean),
+                         date_max = max(end)),
+             aes(date_max + months(14), mean_mean),
+             shape = "\u2014", size = 5, alpha = 0.4) +
+  facet_wrap(~source, scales = "free") +
+  ggtitle("Forecast accuracy vs time of forecast",
+          subtitle = "Means for each model as a horizontal line") +
+  xlab("Forecast timepoint") +
+  ylab("Average MAPE") +
+  theme_minimal() +
+  theme(legend.position = c(0.85, -0.1),
+        legend.justification = c(1, 0),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.caption = element_text(hjust = 0, lineheight = 0.5)) +
+  scale_colour_manual(name = "Model",
+                      values = c("ARIMA" = "#00BFC4",
+                                 "MEAN" = "red",
+                                 "NAIVE" = "black"))
+
+# FIXME everything below this line
 # Plot mean accuracies of different models
 all_cagr_accuracies %>% 
   group_by(source) %>% 
