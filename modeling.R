@@ -310,6 +310,53 @@ for(i in length(cagrs):length(cagrs)){ # FIXME
                                                      .x))
 }
 
+# Get actuals and forecasts for each slice
+test_to_plot <- future_map(1:length(train_test_fcast %>%  
+                                      pluck(10)),
+                           ~train_test_fcast %>%  
+                             pluck(10) %>% 
+                             pluck(.x) %>% 
+                             pluck(2)) %>% 
+  reduce(bind_rows)
+
+training_test <- bind_rows(train_test_fcast %>% 
+                             pluck(10) %>% 
+                             pluck(length(train_test_fcast)) %>% 
+                             pluck(1),
+                           test_to_plot)
+
+fcast_to_plot <- future_map(1:length(train_test_fcast %>%  
+                                       pluck(10)),
+                            ~train_test_fcast %>%  
+                              pluck(10) %>% 
+                              pluck(.x) %>% 
+                              pluck(3)) %>% 
+  reduce(bind_rows)
+
+
+fcast_to_plot %>%
+  filter(.model == "ARIMA") %>% # FIXME
+  autoplot(color = "red", size = 1) +
+  autolayer(training_test %>% 
+              filter(country %in% fcast_to_plot$country), 
+            cagr_10_year,
+            color = "black",
+            size = 1) +
+  geom_hline(yintercept = 1) +
+  scale_x_yearmonth(labels = year(seq.Date(fcast_start_date,
+                                           as.Date(max(test$date)),
+                                           by = "5 years")),
+                    breaks = yearmonth(seq.Date(fcast_start_date,
+                                                as.Date(max(test$date)),
+                                                by = "5 years"))) +
+  facet_wrap(~ country) + 
+  theme_minimal() +
+  expand_limits(x = fcast_start_date) +
+  theme(legend.position = c(0.95, 0),
+        legend.justification = c(1, 0),
+        axis.text.x = element_text(angle = 45))
+
+
 slice_acc_to_plot <- slice_acc %>% 
   pivot_longer(ARIMA:NAIVE) %>% 
   group_by(end, source, slice, name) %>% 
