@@ -23,9 +23,11 @@ fcast_start_date <- as.Date("1980-01-01")
 model_to_compare <- "NAIVE"
 
 # Data frames and corresponding predictors to use in mapping
-dfs <- c("capes_long", "prices_local_long", "rate_10_year_long", "unemployment_long", "dividends_long")
+dfs <- c("capes_long", "prices_local_long", "rate_10_year_long",
+         "unemployment_long", "dividends_long")
 cagrs <- paste0("cagr_", lead_years, "_year")
-predictors <- c("cape", "cagr_10_year", "rate_10_year", "unemployment", "dividend_yield")
+predictors <- c("cape", "cagr_10_year", "rate_10_year",
+                "unemployment", "dividend_yield")
 
 # Prices ------------------------------------------------------------------
 prices_local_wide <- read_excel("Data/loc2.xlsx")
@@ -261,37 +263,52 @@ output_models <- function(cagr, countries, s){
                   forecast(test) %>% 
                   filter(date == yearmonth(leakage_end_date)))
     
-    # Calculate leakage-free accuracies
-    acc_no_leakage <- fcast_no_leakage %>% 
-      accuracy(bind_rows(training, test)) %>% 
-      select(.model, country, .type, RMSE, MAE, MAPE) %>% 
-      filter(!is.na(MAE))
+    # FIXME
+    # TODO
+    list(training %>% mutate(set = "training"),
+         test %>% mutate(set = "test"),
+         fcast_no_leakage %>% mutate(set = "fcast"))
     
-    acc_no_leakage %>% 
-      pivot_wider(id = country, names_from = .model, values_from = MAPE) %>% 
-      mutate(source = !!cagr,
-             slice = !!s,
-             start = leakage_start_date,
-             end = leakage_end_date) %>% 
-      select(country, source, slice, start, end, ARIMA, MEAN, NAIVE) %>% 
-      arrange(ARIMA) #%>% pull(ARIMA) %>% mean # FIXME
+    # Calculate leakage-free accuracies
+    # acc_no_leakage <- fcast_no_leakage %>% 
+    #   accuracy(bind_rows(training, test)) %>% 
+    #   select(.model, country, .type, RMSE, MAE, MAPE) %>% 
+    #   filter(!is.na(MAE))
+    # 
+    # acc_no_leakage %>% 
+    #   pivot_wider(id = country, names_from = .model, values_from = MAPE) %>% 
+    #   mutate(source = !!cagr,
+    #          slice = !!s,
+    #          start = leakage_start_date,
+    #          end = leakage_end_date) %>% 
+    #   select(country, source, slice, start, end, ARIMA, MEAN, NAIVE) %>% 
+    #   arrange(ARIMA) #%>% pull(ARIMA) %>% mean # FIXME
   }
 }
 
 plan(multisession)
 
-countries <- c("CANADA", "USA", "UK", "NETHERLANDS", "GERMANY", "AUSTRALIA", "SPAIN")
+countries <- c("CANADA", "USA", "UK", "NETHERLANDS",
+               "GERMANY", "AUSTRALIA", "SPAIN")
 features_formula <-  "~ cape + rate_10_year + dividend_yield"
 
 # 1:20 h
 # TODO combine with looping
-slice_acc <- future_map(cagrs,
-                        ~future_map(0:120,
-                                    function(.y) output_models(.x,
-                                                               countries,
-                                                               .y)),
-                        .progress = TRUE) %>% 
-  reduce(bind_rows)
+# slice_acc <- future_map(cagrs,
+#                         ~future_map(0:120,
+#                                     function(.y) output_models(.x,
+#                                                                countries,
+#                                                                .y)),
+#                         .progress = TRUE) %>% 
+#   reduce(bind_rows)
+
+train_test_fcast <- list()
+for(i in length(cagrs):length(cagrs)){ # FIXME
+  train_test_fcast[[i]] <- future_map(0:120,
+                                      ~output_models(cagrs[i],
+                                                     countries,
+                                                     .x))
+}
 
 slice_acc_to_plot <- slice_acc %>% 
   pivot_longer(ARIMA:NAIVE) %>% 
@@ -370,9 +387,12 @@ create_formula <- function(pr) {
                                    ~combn(pr, .x, FUN = list)))
   
   # define rhs of combinations and apply regex-cleaning
-  rhs <- map_chr(seq_along(combinations), ~ paste(gsub("[,]", " + ", 
-                                                       gsub("[^A-Za-z0-9,;._-]","", 
-                                                            gsub("[\\c]\\(", "", combinations[.]))), collapse = " + "))
+  rhs <- map_chr(seq_along(combinations),
+                 ~ paste(gsub("[,]", " + ", 
+                              gsub("[^A-Za-z0-9,;._-]","", 
+                                   gsub("[\\c]\\(", "",
+                                        combinations[.]))),
+                         collapse = " + "))
   # define cagr goal for lhs
   lhs <- as.character(cagrs[5])
   
