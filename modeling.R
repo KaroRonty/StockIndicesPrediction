@@ -23,10 +23,10 @@ fcast_start_date <- as.Date("1980-01-01")
 model_to_compare <- "NAIVE"
 
 # Data frames and corresponding predictors to use in mapping
-dfs <- c("capes_long", "prices_local_long", "rate_10_year_long",
+dfs <- c("capes_long","rate_10_year_long",
          "unemployment_long", "dividends_long", "s_rate_10_year_long", "cpi_long")
 cagrs <- paste0("cagr_", lead_years, "_year")
-predictors <- c("cape", "cagr_5_year", "rate_10_year",
+predictors <- c("cape", "rate_10_year",
                 "unemployment", "dividend_yield", "s_rate_10_year", "cpi")
 
 # Prices ------------------------------------------------------------------
@@ -236,14 +236,20 @@ output_models <- function(cagr, countries){
   # FIXME training set according to CAGR years
   # Split into different sets
   training <- to_model %>% 
-    filter(date < yearmonth(leakage_start_date))
+    filter(date < yearmonth(leakage_start_date)) %>% 
+    mutate(source = !!cagr,
+           set = "training")
   
   leakage_set <- to_model %>% 
     filter(date >= yearmonth(leakage_start_date),
-           date < yearmonth(leakage_end_date))
+           date < yearmonth(leakage_end_date)) %>% 
+    mutate(source = !!cagr,
+           set = "leakage")
   
   test <- to_model %>% 
-    filter(date >= yearmonth(leakage_end_date))
+    filter(date >= yearmonth(leakage_end_date)) %>% 
+    mutate(source = !!cagr,
+           set = "test")
   
   # Formulas for mean, naive and ARIMA
   arima_f <- as.formula(paste(cagr, features_formula))
@@ -257,7 +263,7 @@ output_models <- function(cagr, countries){
   
   # Train different time series models
   models_ts <- training %>% 
-    model(ARIMA = ARIMA(arima_f)) #,
+    model(ARIMA = ARIMA(arima_f)) # cagr_10_year ~ cape + rate_10_year + dividend_yield
   
   # Train mean and naive models
   models_naive_mean <- paste0("models_mean_cagr_",
@@ -276,7 +282,8 @@ output_models <- function(cagr, countries){
     filter(date > yearmonth(leakage_end_date)) %>% 
     bind_rows(models_naive_mean %>% 
                 forecast(test) %>% 
-                filter(date > yearmonth(leakage_end_date)))
+                filter(date > yearmonth(leakage_end_date))) %>% 
+    mutate(set = "forecast")
   
   # Calculate leakage-free accuracies
   acc_no_leakage <- fcast_no_leakage %>% 
@@ -284,27 +291,56 @@ output_models <- function(cagr, countries){
     select(.model, country, .type, RMSE, MAE, MAPE) %>% 
     filter(!is.na(MAE))
   
-  acc_no_leakage %>% 
+  acc <- acc_no_leakage %>% 
     pivot_wider(id = country, names_from = .model, values_from = MAPE) %>% 
     mutate(source = !!cagr) %>% 
     select(country, source, ARIMA, MEAN, NAIVE) %>% 
     arrange(ARIMA) # FIXME
+  
+  # Combine labeled sets
+  all_sets <- training %>% 
+    bind_rows(leakage_set) %>% 
+    bind_rows(test)
+  
+  list(all_sets, fcast_no_leakage, acc)
 }
 
 plan(multisession)
 
-countries <- c("CANADA", "USA", "UK", "NETHERLANDS", "GERMANY", "AUSTRALIA", "SPAIN")
+countries <- c("AUSTRALIA", "CANADA", "USA", "UK", "NETHERLANDS", "GERMANY",
+               "AUSTRALIA", "SPAIN")
 features_formula <-  "~ cape + rate_10_year + dividend_yield"
 
 # 28 sec
-all_cagr_accuracies <- future_map(cagrs,
-                                  ~output_models(.x, countries),
-                                  .progress = TRUE) %>% 
-  reduce(full_join)
+all_cagr_results <- future_map(cagrs,
+                               ~output_models(.x, countries),
+                               .progress = TRUE)
 
-# FIXME everything below this line
+# Take apart results
+sets <- map(1:length(cagrs),
+                  ~all_cagr_results %>% 
+                    pluck(.x) %>% 
+                    pluck(1) %>% 
+              as_tibble()) %>% 
+  reduce(bind_rows)
+
+fcasts <- map(1:length(cagrs),
+              ~all_cagr_results %>% 
+                pluck(.x) %>% 
+                pluck(2) %>% 
+                as_tibble() %>% 
+                select(-!!cagrs[.x]) %>% 
+                mutate(source = cagrs[.x])) %>% 
+reduce(bind_rows)
+
+accuracies <- map(1:length(cagrs),
+                  ~all_cagr_results %>% 
+                    pluck(.x) %>% 
+                    pluck(3)) %>% 
+  reduce(bind_rows)
+
 # Plot mean accuracies of different models
-all_cagr_accuracies %>% 
+accuracies %>% 
   group_by(source) %>% 
   pivot_longer(-country:-source) %>% 
   rename(Country = country,
