@@ -4,6 +4,68 @@ library(janitor)
 library(ggplot2)
 
 
+# Training/test/fcast split from function ---------------------------------
+
+test_to_plot <- future_map(1:length(train_test_fcast %>%  
+                                      pluck(10)),
+                           ~train_test_fcast %>%  
+                             pluck(10) %>% 
+                             pluck(.x) %>% 
+                             pluck(2)) %>% 
+  reduce(bind_rows)
+
+training_test <- bind_rows(train_test_fcast %>% 
+                             pluck(10) %>% 
+                             pluck(length(train_test_fcast)) %>% 
+                             pluck(1),
+                           test_to_plot)
+
+fcast_to_plot <- future_map(1:length(train_test_fcast %>%  
+                                       pluck(10)),
+                            ~train_test_fcast %>%  
+                              pluck(10) %>% 
+                              pluck(.x) %>% 
+                              pluck(3)) %>% 
+  reduce(bind_rows)
+
+fcast_to_plot %>%
+  filter(.model == "ARIMA") %>% # FIXME
+  autoplot(color = "red", size = 1) +
+  autolayer(training_test %>% 
+              filter(country %in% fcast_to_plot$country), 
+            cagr_10_year,
+            color = "black",
+            size = 1) +
+  annotate("rect", fill = "gray", alpha = 0.25, 
+           xmin = as.Date(leakage_start_date), xmax = as.Date(leakage_end_date),
+           ymin = -Inf, ymax = Inf) +
+  geom_hline(yintercept = 1) +
+  scale_x_yearmonth(labels = year(seq.Date(fcast_start_date,
+                                           as.Date(max(test$date)),
+                                           by = "5 years")),
+                    breaks = yearmonth(seq.Date(fcast_start_date,
+                                                as.Date(max(test$date)),
+                                                by = "5 years"))) +
+  facet_wrap(~ country) + 
+  geom_vline(xintercept = as.Date(leakage_start_date),
+             color = "gray", linetype = "dashed") +
+  geom_vline(xintercept = as.Date(leakage_end_date),
+             color = "gray", linetype = "dashed") +
+  theme_minimal() +
+  expand_limits(x = fcast_start_date) +
+  theme(legend.position = c(0.95, 0),
+        legend.justification = c(1, 0),
+        axis.text.x = element_text(angle = 45))
+
+# Accuracy of different slices --------------------------------------------
+
+slice_acc %>% 
+  reduce(bind_rows) %>% 
+  mutate(diff = ARIMA - MEAN) %>% 
+  group_by(slice, start, end) %>% 
+  summarise(mean_diff = mean(diff)) %>% 
+  print(n = 100)
+
 # Unemployment correlation example ----------------------------------------
 
 t4 <- map(c("prices_local_long", "unemployment_long"), ~get(.x)) %>% 
