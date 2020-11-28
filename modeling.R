@@ -368,6 +368,47 @@ accuracies %>%
   theme_minimal() +
   theme(legend.position = "bottom")
 
+# Plot all sets with forecasts
+plot_forecasts <- function(model, cagr) {
+  fcasts %>%
+    filter(.model == model,
+           source == cagr) %>% 
+    as_tsibble(key = "country") %>% 
+    autoplot(.mean, color = "red", size = 1) +
+    autolayer(sets %>% 
+                filter(source == cagr,
+                       country %in% fcasts$country) %>% 
+                mutate(.mean = get(cagr)) %>% 
+                as_tsibble(key = "country"), 
+              .mean,
+              color = "black",
+              size = 1) +
+    annotate("rect", fill = "gray", alpha = 0.25, 
+             xmin = as.Date(leakage_start_date), xmax = as.Date(leakage_end_date),
+             ymin = -Inf, ymax = Inf) +
+    geom_hline(yintercept = 1) +
+    scale_x_yearmonth(labels = year(seq.Date(fcast_start_date,
+                                             as.Date(max(test$date)),
+                                             by = "5 years")),
+                      breaks = yearmonth(seq.Date(fcast_start_date,
+                                                  as.Date(max(test$date)),
+                                                  by = "5 years"))) +
+    facet_wrap(~ country) + 
+    geom_vline(xintercept = as.Date(leakage_start_date),
+               color = "gray", linetype = "dashed") +
+    geom_vline(xintercept = as.Date(leakage_end_date),
+               color = "gray", linetype = "dashed") +
+    theme_minimal() +
+    expand_limits(x = fcast_start_date) +
+    theme(legend.position = c(0.95, 0),
+          legend.justification = c(1, 0),
+          axis.text.x = element_text(angle = 45))
+}
+
+plot_forecasts("ARIMA", cagrs[10])
+
+# FIXME everything below this line
+
 # FEATURE SELECTION FOR CURRENT VARIABLES ----
 
 # list all predictor & formula combinations
@@ -553,40 +594,6 @@ acc_no_leakage <- fcast_no_leakage %>%
   filter(!is.na(MAE)) %>% 
   arrange(MAE) %>% 
   print(n = 100)
-
-# Plot all sets with forecasts
-plot_forecasts <- function(model) {
-  fcast %>%
-    filter(.model == model) %>% 
-    autoplot(color = "red", size = 1) +
-    autolayer(bind_rows(training, leakage_set, test) %>% 
-                filter(country %in% fcast$country), 
-              cagr_10_year,
-              color = "black",
-              size = 1) +
-    annotate("rect", fill = "gray", alpha = 0.25, 
-             xmin = as.Date(leakage_start_date), xmax = as.Date(leakage_end_date),
-             ymin = -Inf, ymax = Inf) +
-    geom_hline(yintercept = 1) +
-    scale_x_yearmonth(labels = year(seq.Date(fcast_start_date,
-                                             as.Date(max(test$date)),
-                                             by = "5 years")),
-                      breaks = yearmonth(seq.Date(fcast_start_date,
-                                                  as.Date(max(test$date)),
-                                                  by = "5 years"))) +
-    facet_wrap(~ country) + 
-    geom_vline(xintercept = as.Date(leakage_start_date),
-               color = "gray", linetype = "dashed") +
-    geom_vline(xintercept = as.Date(leakage_end_date),
-               color = "gray", linetype = "dashed") +
-    theme_minimal() +
-    expand_limits(x = fcast_start_date) +
-    theme(legend.position = c(0.95, 0),
-          legend.justification = c(1, 0),
-          axis.text.x = element_text(angle = 45))
-}
-
-plot_forecasts("ARIMA")
 
 # Calculate and compare accuracies of two different model types
 # FIXME other models are missing and have to be manually added
