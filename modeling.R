@@ -95,61 +95,28 @@ growth_local_long <- suppressMessages(
       ~add_cagr_columns(growth_local_long, .x)) %>% 
     reduce(inner_join))
 
-# CAPEs -------------------------------------------------------------------
-capes_wide <- read_excel("Data/cape.xls")
 
-# Pivot into long format and replace missing values with NAs
-capes_long <- capes_wide %>% 
-  pivot_longer(-date,
-               names_to = "country",
-               values_to = "cape") %>%
-  mutate(cape = ifelse(cape == 0, NA, cape),
-         date = yearmonth(date))
+# Function for reading data from Excel
+read_data <- function(filename, extension, column,
+                      remove_zero = FALSE, sheet = 1L){
+  read_excel(paste0("Data/", filename, ".", extension), sheet = sheet) %>% 
+    # Pivot into long format and replace missing values with NAs
+    pivot_longer(-date,
+                 names_to = "country",
+                 values_to = column) %>%
+    mutate(!!column := ifelse(remove_zero & get(column) == 0,
+                              NA,
+                              get(column)),
+           date = yearmonth(date))
+}
 
-# Unemployment -------------------------------------------------------------------
-unemployment_wide <- read_excel("Data/macro_m.xlsx", sheet = "unr_sa") # unr_na
-
-unemployment_long <- unemployment_wide %>% 
-  pivot_longer(-date, 
-               names_to = "country", 
-               values_to = "unemployment") %>% 
-  mutate(date = yearmonth(date))
-
-rate_10_year_wide <- read_excel("Data/macro_m.xlsx", sheet = "ltir")
-
-rate_10_year_long <- rate_10_year_wide %>% 
-  pivot_longer(-date, 
-               names_to = "country", 
-               values_to = "rate_10_year") %>% 
-  mutate(date = yearmonth(date))
-
-
-s_rate_10_year_wide <- read_excel("Data/macro_m.xlsx", sheet = "stir")
-
-s_rate_10_year_long <- s_rate_10_year_wide %>% 
-  pivot_longer(-date, 
-               names_to = "country", 
-               values_to = "s_rate_10_year") %>% 
-  mutate(date = yearmonth(date))
-
-# CPI -------------------------------------------------------------------
-cpi_wide <- read_excel("Data/macro_m.xlsx", sheet = "cpi") # cpi
-
-cpi_long <- cpi_wide %>% 
-  pivot_longer(-date, 
-               names_to = "country", 
-               values_to = "cpi") %>% 
-  mutate(date = yearmonth(date))
-
-# Exchange Rates -------------------------------------------------------------------
-ex_wide <- read_excel("Data/macro_m.xlsx", sheet = "exr") # exchange rates
-
-ex_long <- ex_wide %>% 
-  pivot_longer(-date, 
-               names_to = "country", 
-               values_to = "exchange_rate") %>% 
-  mutate(date = yearmonth(date))
-
+# Features ----------------------------------------------------------------
+capes_long <- read_data("cape", "xls", "cape", TRUE, 1)
+rate_10_year_long <- read_data("macro_m", "xlsx", "rate_10_year", FALSE, "ltir")
+unemployment_long <- read_data("macro_m", "xlsx", "unemployment", FALSE, "unr_sa")
+s_rate_10_year_long <- read_data("macro_m", "xlsx", "s_rate_10_year", FALSE, "stir")
+cpi_long <- read_data("macro_m", "xlsx", "cpi", FALSE, "cpi")
+ex_long <- read_data("macro_m", "xlsx", "exchange_rate", FALSE, "exr")
 
 # Dividends ---------------------------------------------------------------
 # Get dividend yields from each sheet, rename according to country and combine
@@ -199,16 +166,7 @@ cap_long <- cap_long %>%
 # FIXME
 to_model_exploration <- map(dfs, ~get(.x)) %>% 
   reduce(full_join) %>% 
-  select(date, country, !!cagrs, !!predictors) %>% 
-  as_tsibble(key = "country", index = "date")
-
-# Get maximum date from the data
-max_data_date <- to_model_exploration %>% 
-  pull(date) %>% 
-  max()
-
-to_model_exploration <- map(dfs, ~get(.x)) %>% 
-  reduce(full_join) %>% 
+  full_join(prices_local_long) %>% 
   select(date, country, !!cagrs, !!predictors) %>% 
   as_tsibble(key = "country", index = "date")
 
@@ -283,7 +241,9 @@ output_models <- function(cagr, countries){
     bind_rows(models_naive_mean %>% 
                 forecast(test) %>% 
                 filter(date > yearmonth(leakage_end_date))) %>% 
-    mutate(set = "forecast")
+    mutate(set = "forecast",
+           leakage_start_date = leakage_start_date,
+           leakage_end_date =  leakage_end_date)
   
   # Calculate leakage-free accuracies
   acc_no_leakage <- fcast_no_leakage %>% 
@@ -309,7 +269,7 @@ plan(multisession)
 
 countries <- c("AUSTRALIA", "CANADA", "USA", "UK", "NETHERLANDS", "GERMANY",
                "AUSTRALIA", "SPAIN")
-features_formula <-  "~ cape + rate_10_year + dividend_yield"
+features_formula <-  "~ cape + rate_10_year"
 
 # 28 sec
 all_cagr_results <- future_map(cagrs,
@@ -370,10 +330,15 @@ accuracies %>%
 
 # Plot all sets with forecasts
 plot_forecasts <- function(model, cagr) {
-  fcasts %>%
+  data <- fcasts %>%
     filter(.model == model,
            source == cagr) %>% 
-    as_tsibble(key = "country") %>% 
+    as_tsibble(key = "country", index = "date")
+  
+  leakage_start_date <- unique(data$leakage_start_date)
+  leakage_end_date <- unique(data$leakage_end_date)
+  
+  data %>% 
     autoplot(.mean, color = "red", size = 1) +
     autolayer(sets %>% 
                 filter(source == cagr,
@@ -384,14 +349,15 @@ plot_forecasts <- function(model, cagr) {
               color = "black",
               size = 1) +
     annotate("rect", fill = "gray", alpha = 0.25, 
-             xmin = as.Date(leakage_start_date), xmax = as.Date(leakage_end_date),
+             xmin = leakage_start_date,
+             xmax = leakage_end_date,
              ymin = -Inf, ymax = Inf) +
     geom_hline(yintercept = 1) +
     scale_x_yearmonth(labels = year(seq.Date(fcast_start_date,
-                                             as.Date(max(test$date)),
+                                             as.Date(max(data$date)),
                                              by = "5 years")),
                       breaks = yearmonth(seq.Date(fcast_start_date,
-                                                  as.Date(max(test$date)),
+                                                  as.Date(max(data$date)),
                                                   by = "5 years"))) +
     facet_wrap(~ country) + 
     geom_vline(xintercept = as.Date(leakage_start_date),
