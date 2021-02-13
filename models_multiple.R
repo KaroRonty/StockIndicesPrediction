@@ -69,15 +69,15 @@ test <- to_model %>%
 
 # Models ------------------------------------------------------------------
 
-normalize <- function(x, original) {
-  (x - min(original, na.rm = TRUE)) /
-    (max(original, na.rm = TRUE) -
-       min(original, na.rm = TRUE))
+normalize <- function(x) {
+  (x - min(x, na.rm = TRUE)) /
+    (max(x, na.rm = TRUE) -
+       min(x, na.rm = TRUE))
 }
 
 arima_training <- training %>% 
   mutate_at(vars(cagr_n_year, !!predictors), 
-            function(x) normalize(x, x))
+            function(x) normalize(x))
 
 models_ts <- training %>% 
   model(ARIMA = ARIMA(cagr_n_year ~ 
@@ -89,6 +89,20 @@ models_ts <- training %>%
 arima_pred <- models_ts %>% 
   forecast(test %>% filter(country == selected_country)) %>% 
   pull(.mean)
+
+models_ts %>% 
+  pull(ARIMA) %>% 
+  pluck(1) %>% 
+  tidy() %>% 
+  arrange(desc(abs(estimate))) %>% 
+  mutate(estimate = (estimate - min(estimate)) / 
+           (max(estimate) - min(estimate))) %>% 
+  ggplot(aes(estimate, reorder(term, estimate))) +
+  geom_col() +
+  xlab("Importance") +
+  ylab(NULL) +
+  ggtitle("ARIMA feature importance") +
+  theme_minimal()
 
 cl <- makePSOCKcluster(parallel::detectCores(logical = FALSE))
 registerDoParallel(cl)
