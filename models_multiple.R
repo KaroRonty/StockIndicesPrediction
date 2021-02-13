@@ -4,6 +4,7 @@ library(fable)
 library(readxl)
 library(tsibble)
 library(parallel)
+library(patchwork)
 library(lubridate)
 library(tidyverse)
 library(doParallel)
@@ -90,7 +91,7 @@ arima_pred <- models_ts %>%
   forecast(test %>% filter(country == selected_country)) %>% 
   pull(.mean)
 
-models_ts %>% 
+importance_arima <- models_ts %>% 
   pull(ARIMA) %>% 
   pluck(1) %>% 
   tidy() %>% 
@@ -101,7 +102,16 @@ models_ts %>%
   geom_col() +
   xlab("Importance") +
   ylab(NULL) +
-  ggtitle("ARIMA feature importance") +
+  ggtitle("ARIMA") +
+  theme_minimal()
+
+pred_vs_actual_arima <- tibble(date = country_test$date, 
+                               actual = country_test$cagr_n_year, 
+                               pred = arima_pred) %>% 
+  pivot_longer(actual:pred) %>% 
+  ggplot(aes(date, value, color = name)) +
+  ggtitle("ARIMA") +
+  geom_line() + 
   theme_minimal()
 
 cl <- makePSOCKcluster(parallel::detectCores(logical = FALSE))
@@ -166,10 +176,10 @@ xgboost_fit <- xgboost_wf %>%
                       select_best("rmse")) %>% 
   fit(model_data_prepared %>% juice())
 
-xgboost_fit %>% 
+importance_xgboost <- xgboost_fit %>% 
   pull_workflow_fit() %>% 
   vip() +
-  ggtitle("XGBoost feature importance") +
+  ggtitle("XGBoost") +
   theme_minimal()
 
 xgb_pred <- xgboost_fit %>% 
@@ -177,13 +187,13 @@ xgb_pred <- xgboost_fit %>%
             bake(country_test)) %>% 
   pull(.pred)
 
-tibble(date = country_test$date, 
+pred_vs_actual_xgboost <- tibble(date = country_test$date, 
        actual = country_test$cagr_n_year, 
        pred = xgb_pred) %>% 
   pivot_longer(actual:pred) %>% 
   ggplot(aes(date, value, color = name)) +
   geom_line() + 
-  ggtitle("XGBoost predictions vs actuals") +
+  ggtitle("XGBoost") +
   theme_minimal()
 
 tibble(date = country_test$date, 
@@ -217,10 +227,10 @@ rf_fit <- rf_wf %>%
                       select_best("rmse")) %>% 
   fit(model_data_prepared %>% juice())
 
-rf_fit %>% 
+importance_rf <- rf_fit %>% 
   pull_workflow_fit() %>% 
   vip() +
-  ggtitle("Random Forest feature importance") +
+  ggtitle("Random Forest") +
   theme_minimal()
 
 rf_pred <- rf_fit %>% 
@@ -228,12 +238,12 @@ rf_pred <- rf_fit %>%
             bake(country_test)) %>% 
   pull(.pred)
 
-tibble(date = country_test$date, 
+pred_vs_actual_rf <- tibble(date = country_test$date, 
        actual = country_test$cagr_n_year, 
        pred = rf_pred) %>% 
   pivot_longer(actual:pred) %>% 
   ggplot(aes(date, value, color = name)) +
-  ggtitle("Random Forest predictions vs actuals") +
+  ggtitle("Random forest") +
   geom_line() + 
   theme_minimal()
 
@@ -317,10 +327,10 @@ stack_fit <- stack_wf %>%
                       select_best("rmse")) %>% 
   fit(stack_prepared %>% juice())
 
-stack_fit %>% 
+importance_stack <- stack_fit %>% 
   pull_workflow_fit() %>% 
   vip() +
-  ggtitle("Stacked model feature importance") +
+  ggtitle("Stacked model") +
   theme_minimal()
 
 stack_pred <- stack_fit %>% 
@@ -334,22 +344,22 @@ stack_pred_tibble <- tibble(date = country_test$date,
   full_join(stack_test) %>% 
   mutate(ensemble_pred = (rf_pred + xgb_pred + arima_pred) / 3)
 
-stack_pred_tibble %>% 
+pred_vs_actual_stack <- stack_pred_tibble %>% 
   pivot_longer(c(actual, stack_pred)) %>% 
   ggplot(aes(x = date,
              y = value)) +
   geom_line(aes(color = name)) +
-  ggtitle("Stacked model predictions vs actuals") +
+  ggtitle("Stacked model") +
   theme_minimal()
 
 # Ensemble ----------------------------------------------------------------
 
-stack_pred_tibble %>% 
+pred_vs_actual_ensemble <- stack_pred_tibble %>% 
   pivot_longer(c(actual, ensemble_pred)) %>% 
   ggplot(aes(x = date,
              y = value)) +
   geom_line(aes(color = name)) +
-  ggtitle("Ensemble model predictions vs actuals") +
+  ggtitle("Ensemble model") +
   theme_minimal()
 
 # Ensemble gives 1/3 weight to all models, therefore feature importances are
@@ -379,10 +389,19 @@ stack_pred_tibble %>%
   rename(model = rowname) %>% 
   arrange(MAPE)
 
-"18:40"
-Sys.time()
-
 stack_fit %>% 
   pull_workflow_fit() %>%
   tidy() %>%
   select(-penalty)
+
+# Results
+(importance_arima + importance_rf) /
+  (importance_xgboost + importance_stack) +
+  plot_annotation(paste("Feature importances by model for",
+                        selected_country))
+
+(pred_vs_actual_arima + pred_vs_actual_rf) /
+  (pred_vs_actual_xgboost + pred_vs_actual_stack) +
+  (pred_vs_actual_ensemble + plot_spacer()) +
+  plot_annotation(paste("Predictions vs actuals by model for",
+                        selected_country))
