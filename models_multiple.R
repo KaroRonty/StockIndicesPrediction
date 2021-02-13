@@ -80,18 +80,18 @@ arima_training <- training %>%
   mutate_at(vars(cagr_n_year, !!predictors), 
             function(x) normalize(x))
 
-models_ts <- training %>% 
+arima_fit <- training %>% 
   model(ARIMA = ARIMA(cagr_n_year ~ 
                         cape + 
                         rate_10_year + 
                         dividend_yield + 
                         s_rate_10_year))
 
-arima_pred <- models_ts %>% 
+arima_pred <- arima_fit %>% 
   forecast(test %>% filter(country == selected_country)) %>% 
   pull(.mean)
 
-importance_arima <- models_ts %>% 
+importance_arima <- arima_fit %>% 
   pull(ARIMA) %>% 
   pluck(1) %>% 
   tidy() %>% 
@@ -265,7 +265,7 @@ rf_pred_training <- rf_fit %>%
   pull(.pred)
 
 # TODO fitted or forecasts?
-arima_pred_training <- models_ts %>% 
+arima_pred_training <- arima_fit %>% 
   pull(ARIMA) %>% 
   pluck(1) %>% 
   fitted() %>% 
@@ -405,3 +405,7 @@ stack_fit %>%
   (pred_vs_actual_ensemble + plot_spacer()) +
   plot_annotation(paste("Predictions vs actuals by model for",
                         selected_country))
+
+# Saving
+saveRDS(list(arima_fit, xgboost_fit, rf_fit, stack_fit),
+        paste0("multiple_models_", Sys.Date()))
