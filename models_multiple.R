@@ -115,8 +115,11 @@ pred_vs_actual_arima <- tibble(date = test$date,
   pivot_longer(actual:pred) %>% 
   ggplot(aes(date, value, color = name)) +
   ggtitle("ARIMA") +
+  xlab("Date") +
+  ylab(cagr_name) +
   geom_line() + 
-  theme_minimal()
+  theme_minimal() +
+  theme(legend.position = "none")
 
 cl <- makePSOCKcluster(parallel::detectCores(logical = FALSE))
 registerDoParallel(cl)
@@ -187,15 +190,17 @@ xgb_pred <- xgboost_fit %>%
   pull(.pred)
 
 pred_vs_actual_xgboost <- tibble(date = test$date, 
-       actual = test$cagr_n_year, 
-       pred = xgb_pred) %>% 
+                                 actual = test$cagr_n_year, 
+                                 pred = xgb_pred) %>% 
   pivot_longer(actual:pred) %>% 
   ggplot(aes(date, value, color = name)) +
   geom_line() + 
   ggtitle("XGBoost") +
-  theme_minimal()
+  xlab("Date") +
+  ylab(cagr_name) +
+  theme_minimal() +
+  theme(legend.position = "none")
 
-0.0604
 tibble(date = test$date,
        actual = test$cagr_n_year, 
        pred = xgb_pred) %>% 
@@ -239,13 +244,16 @@ rf_pred <- rf_fit %>%
   pull(.pred)
 
 pred_vs_actual_rf <- tibble(date = test$date, 
-       actual = test$cagr_n_year, 
-       pred = rf_pred) %>% 
+                            actual = test$cagr_n_year, 
+                            pred = rf_pred) %>% 
   pivot_longer(actual:pred) %>% 
   ggplot(aes(date, value, color = name)) +
-  ggtitle("Random forest") +
   geom_line() + 
-  theme_minimal()
+  ggtitle("Random forest") +
+  xlab("Date") +
+  ylab(cagr_name) +
+  theme_minimal() +
+  theme(legend.position = "none")
 
 tibble(date = test$date, 
        actual = test$cagr_n_year, 
@@ -350,7 +358,10 @@ pred_vs_actual_stack <- stack_pred_tibble %>%
              y = value)) +
   geom_line(aes(color = name)) +
   ggtitle("Stacked model") +
-  theme_minimal()
+  xlab("Date") +
+  ylab(cagr_name) +
+  theme_minimal() +
+  theme(legend.position = "none")
 
 # Ensemble ----------------------------------------------------------------
 
@@ -360,7 +371,10 @@ pred_vs_actual_ensemble <- stack_pred_tibble %>%
              y = value)) +
   geom_line(aes(color = name)) +
   ggtitle("Ensemble model") +
-  theme_minimal()
+  xlab("Date") +
+  ylab(cagr_name) +
+  theme_minimal() +
+  theme(legend.position = "none")
 
 # Ensemble gives 1/3 weight to all models, therefore feature importances are
 # equally distributed between the models
@@ -394,7 +408,20 @@ stack_fit %>%
   tidy() %>%
   select(-penalty)
 
-# Results
+# Results -----------------------------------------------------------------
+
+pred_vs_actual_mean <- stack_pred_tibble %>% 
+  mutate(mean_pred = mean(mean_pred)) %>% 
+  pivot_longer(c(actual, mean_pred)) %>% 
+  ggplot(aes(x = date,
+             y = value)) +
+  geom_line(aes(color = name)) +
+  ggtitle("Mean model") +
+  xlab("Date") +
+  ylab(cagr_name) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
 (importance_arima + importance_rf) /
   (importance_xgboost + importance_stack) +
   plot_annotation(paste("Feature importances by model for",
@@ -402,7 +429,7 @@ stack_fit %>%
 
 (pred_vs_actual_arima + pred_vs_actual_rf) /
   (pred_vs_actual_xgboost + pred_vs_actual_stack) +
-  (pred_vs_actual_ensemble + plot_spacer()) +
+  (pred_vs_actual_ensemble + pred_vs_actual_mean) +
   plot_annotation(paste("Predictions vs actuals by model for",
                         selected_country))
 
