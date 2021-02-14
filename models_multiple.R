@@ -7,18 +7,22 @@ library(parallel)
 library(patchwork)
 library(lubridate)
 library(tidyverse)
+library(tidymodels)
 library(doParallel)
 library(ggbeeswarm)
 library(ggcorrplot)
+
+# 52 min
+tic_all <- Sys.time()
 
 # Which CAGR to use
 selected_cagr <- 5
 cagr_name <- paste0("cagr_", selected_cagr, "_year")
 
 # Which country to create the model for
-# c("AUSTRALIA", "CANADA", "USA", "UK", "NETHERLANDS", "GERMANY", "SPAIN")
+# c("AUSTRALIA", "CANADA", "USA", "UK", "NETHERLANDS", "GERMANY", "SPAIN", "SWITZERLAND")
 # TODO CANADA GERMANY SPAIN
-selected_country <- "UK"
+selected_country <- "SPAIN"
 
 # How many years ahead to create CAGRs for sets
 lead_years <- 1:10
@@ -29,7 +33,7 @@ dfs <- c("capes_long","rate_10_year_long",
          "s_rate_10_year_long", "cpi_long")
 cagrs <- paste0("cagr_", lead_years, "_year")
 predictors <- c("cape", "rate_10_year",
-                "unemployment", "dividend_yield", "s_rate_10_year", "cpi")
+                "unemployment", "dividend_yield", "s_rate_10_year", "cpi") # FIXME unemployment
 
 suppressMessages(source("extract_data.R"))
 
@@ -105,8 +109,8 @@ importance_arima <- arima_fit %>%
   ggtitle("ARIMA") +
   theme_minimal()
 
-pred_vs_actual_arima <- tibble(date = country_test$date, 
-                               actual = country_test$cagr_n_year, 
+pred_vs_actual_arima <- tibble(date = test$date, 
+                               actual = test$cagr_n_year, 
                                pred = arima_pred) %>% 
   pivot_longer(actual:pred) %>% 
   ggplot(aes(date, value, color = name)) +
@@ -117,12 +121,6 @@ pred_vs_actual_arima <- tibble(date = country_test$date,
 cl <- makePSOCKcluster(parallel::detectCores(logical = FALSE))
 registerDoParallel(cl)
 
-country_training <- training %>% 
-  filter(country == selected_country)
-
-country_test <- test %>% 
-  filter(country == selected_country)
-
 # Common stuff
 model_recipe <- recipe(cagr_n_year ~ 
                          cape + 
@@ -130,11 +128,11 @@ model_recipe <- recipe(cagr_n_year ~
                          dividend_yield + 
                          s_rate_10_year + 
                          cpi, # TODO unemployment
-                       data = country_training) %>% 
+                       data = training) %>% 
   step_range(all_predictors(), min = 0, max = 1)
 
 model_data_prepared <- prep(model_recipe, 
-                            training = country_training, 
+                            training = training, 
                             verbose = TRUE)
 
 model_folds <- model_data_prepared %>% 
@@ -153,7 +151,7 @@ xgboost_grid <- grid_regular(min_n(),
                              levels = 5)
 
 xgboost_model <- boost_tree(mode = "regression",
-                            trees = 1000,
+                            trees = 50,
                             min_n = tune(),
                             tree_depth = tune(), #tune(),
                             learn_rate = tune(),
@@ -164,6 +162,7 @@ xgboost_wf <- workflow() %>%
   add_recipe(model_recipe) %>% 
   add_model(xgboost_model)
 
+# 20.4 min
 tic_xgboost <- Sys.time()
 xgboost_trained <- xgboost_wf %>% 
   tune_grid(resamples = model_folds,
@@ -184,11 +183,11 @@ importance_xgboost <- xgboost_fit %>%
 
 xgb_pred <- xgboost_fit %>% 
   predict(model_data_prepared %>% 
-            bake(country_test)) %>% 
+            bake(test)) %>% 
   pull(.pred)
 
-pred_vs_actual_xgboost <- tibble(date = country_test$date, 
-       actual = country_test$cagr_n_year, 
+pred_vs_actual_xgboost <- tibble(date = test$date, 
+       actual = test$cagr_n_year, 
        pred = xgb_pred) %>% 
   pivot_longer(actual:pred) %>% 
   ggplot(aes(date, value, color = name)) +
@@ -196,12 +195,13 @@ pred_vs_actual_xgboost <- tibble(date = country_test$date,
   ggtitle("XGBoost") +
   theme_minimal()
 
-tibble(date = country_test$date, 
-       actual = country_test$cagr_n_year, 
+0.0604
+tibble(date = test$date,
+       actual = test$cagr_n_year, 
        pred = xgb_pred) %>% 
   summarise(mape = median(abs(((actual) - pred) / actual)))
 
-rf_grid <- grid_regular(finalize(mtry(), country_training),
+rf_grid <- grid_regular(finalize(mtry(), training),
                         min_n(),
                         levels = 50)
 
@@ -235,11 +235,11 @@ importance_rf <- rf_fit %>%
 
 rf_pred <- rf_fit %>% 
   predict(model_data_prepared %>% 
-            bake(country_test)) %>% 
+            bake(test)) %>% 
   pull(.pred)
 
-pred_vs_actual_rf <- tibble(date = country_test$date, 
-       actual = country_test$cagr_n_year, 
+pred_vs_actual_rf <- tibble(date = test$date, 
+       actual = test$cagr_n_year, 
        pred = rf_pred) %>% 
   pivot_longer(actual:pred) %>% 
   ggplot(aes(date, value, color = name)) +
@@ -247,8 +247,8 @@ pred_vs_actual_rf <- tibble(date = country_test$date,
   geom_line() + 
   theme_minimal()
 
-tibble(date = country_test$date, 
-       actual = country_test$cagr_n_year, 
+tibble(date = test$date, 
+       actual = test$cagr_n_year, 
        pred = rf_pred) %>% 
   summarise(mape = median(abs(((actual) - pred) / actual)))
 
@@ -256,12 +256,12 @@ tibble(date = country_test$date,
 
 xgb_pred_training <- xgboost_fit %>% 
   predict(model_data_prepared %>% 
-            bake(country_training)) %>% 
+            bake(training)) %>% 
   pull(.pred)
 
 rf_pred_training <- rf_fit %>% 
   predict(model_data_prepared %>% 
-            bake(country_training)) %>% 
+            bake(training)) %>% 
   pull(.pred)
 
 # TODO fitted or forecasts?
@@ -271,14 +271,14 @@ arima_pred_training <- arima_fit %>%
   fitted() %>% 
   pull(.fitted)
 
-stack_training <- country_training %>% 
+stack_training <- training %>% 
   as_tibble() %>% 
   select(date, cagr_n_year) %>% 
   mutate(xgb = xgb_pred_training,
          rf = rf_pred_training,
          arima = arima_pred_training)
 
-stack_test <- country_test %>% 
+stack_test <- test %>% 
   as_tibble() %>% 
   select(date, cagr_n_year) %>% 
   mutate(xgb = xgb_pred,
@@ -320,7 +320,7 @@ stack_trained <- stack_wf %>%
   tune_grid(resamples = stack_folds,
             grid = stack_grid,
             metrics = metric_set(mae, mape, rmse, rsq))
-(toc_stack <- Sys.time() - titic_stack)
+(toc_stack <- Sys.time() - tic_stack)
 
 stack_fit <- stack_wf %>% 
   finalize_workflow(stack_trained %>%
@@ -338,8 +338,8 @@ stack_pred <- stack_fit %>%
             bake(stack_test)) %>% 
   pull(.pred)
 
-stack_pred_tibble <- tibble(date = country_test$date, 
-                            actual = country_test$cagr_n_year, 
+stack_pred_tibble <- tibble(date = test$date, 
+                            actual = test$cagr_n_year, 
                             stack_pred = stack_pred) %>% 
   full_join(stack_test) %>% 
   mutate(ensemble_pred = (rf_pred + xgb_pred + arima_pred) / 3)
@@ -408,4 +408,6 @@ stack_fit %>%
 
 # Saving
 saveRDS(list(arima_fit, xgboost_fit, rf_fit, stack_fit),
-        paste0("multiple_models_", Sys.Date()))
+        paste0("multiple_models_", selected_country, "_", Sys.Date()))
+
+(toc_all <- Sys.time() - tic_all)
