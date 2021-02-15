@@ -57,9 +57,17 @@ get_first_date <- function(long_data, predictor, years_or_min){
     select(country, !!predictor := !!years_or_min)
 }
 
+prices_temp <- prices_local_long %>% 
+  select(date, country, !!cagr_name) %>% 
+  as_tibble()
+
+dfs_availability <- c("prices_temp", dfs)
+predictors_availability <- c(cagr_name, predictors)
+
 # FIXME
 # First date
-availability_date <- map2(dfs, c(cagrs[10], predictors), ~get_first_date(.x, .y, "min")) %>% 
+availability_date <- map2(dfs_availability, predictors_availability,
+                          ~get_first_date(.x, .y, "min")) %>% 
   reduce(full_join) %>% 
   mutate_if(is.Date, as.numeric) %>% 
   mutate(mean = rowMeans(across(-country), na.rm = TRUE)) %>% 
@@ -68,7 +76,8 @@ availability_date <- map2(dfs, c(cagrs[10], predictors), ~get_first_date(.x, .y,
 
 # FIXME
 # Amount of years
-availability_years <- map2(dfs, c(cagrs[10], predictors), ~get_first_date(.x, .y, "years")) %>% 
+availability_years <- map2(dfs_availability, predictors_availability, 
+                           ~get_first_date(.x, .y, "years")) %>% 
   reduce(full_join) %>% 
   mutate(mean = rowMeans(across(-country), na.rm = TRUE)) %>% 
   replace(is.na(.), 0) %>% 
@@ -80,14 +89,15 @@ min_years_model <- 7
 formulas <- availability_years %>% 
   mutate(cape = ifelse(cape >= min_years_model, "cape", NA),
          rate_10_year = ifelse(rate_10_year >= min_years_model, "rate_10_year", NA),
+         unemployment = ifelse(unemployment >= min_years_model, "unemployment", NA),
          dividend_yield = ifelse(dividend_yield >= min_years_model, "dividend_yield", NA),
-         cpi = ifelse(cpi >= min_years_model, "cpi", NA),
-         unemployment = ifelse(unemployment >= min_years_model, "unemployment", NA)) %>% 
+         s_rate_10_year = ifelse(s_rate_10_year >= min_years_model, "s_rate_10_year", NA),
+         cpi = ifelse(cpi >= min_years_model, "cpi", NA)) %>% 
   unite(formula, 
-        cape, rate_10_year, dividend_yield, cpi, unemployment,
+        cape, rate_10_year, dividend_yield, cpi, unemployment, s_rate_10_year,
         sep = " + ",
         na.rm = TRUE) %>% 
-  mutate(formula = ifelse(cagr_10_year <= min_years_model, "", formula)) %>% 
+  mutate(formula = ifelse(cagr_5_year <= min_years_model, "", formula)) %>% 
   select(-mean) %>% 
   filter(formula != "") %>% 
   mutate(n = str_count(formula, "\\+") + 1) %>% 
