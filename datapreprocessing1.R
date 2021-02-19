@@ -413,3 +413,25 @@ plot.to.plots.m <- function(i) {
 lapply(plot_list_q, plot.to.plots.q)
 lapply(plot_list_m, plot.to.plots.m)
 
+# incorporate local to EUR change for GERMANY, NETHERLANDS, SPAIN
+
+ex_wide <- read_excel("Data/macro_m.xlsx", sheet = "exr") # exchange rates
+
+
+ex_wide_pre <- ex_wide %>%  
+  mutate(date = yearmonth(date)) %>% 
+  filter(date < yearmonth("1999 Jan"))
+  
+# cut off point after introduction of EUR
+ex_wide_post <- ex_wide %>% 
+  mutate(date = yearmonth(date)) %>% 
+  filter(date >= yearmonth("1999 Jan")) %>% 
+  mutate(SPAIN = EURO,
+         GERMANY = EURO,
+         NETHERLANDS = EURO)
+
+ex_wide <- ex_wide_pre %>% 
+  bind_rows(ex_wide_post)
+  
+xlsx::write.xlsx(ex_wide, file = "Data/macro_m_2.xlsx", sheetName = "exr")
+
