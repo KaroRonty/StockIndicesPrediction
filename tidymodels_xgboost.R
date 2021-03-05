@@ -1,9 +1,11 @@
 library(vip)
 library(tune)
 library(dials)
+library(tibble)
 library(rsample)
 library(parsnip)
 library(recipes)
+library(stringr)
 library(parallel)
 library(yardstick)
 library(workflows)
@@ -12,7 +14,7 @@ library(doParallel)
 cl <- makePSOCKcluster(parallel::detectCores(logical = FALSE))
 registerDoParallel(cl)
 
-one_country <- "USA"
+one_country <- "NETHERLANDS"
 
 # Get unique countries
 countries <- training %>% 
@@ -21,6 +23,9 @@ countries <- training %>%
 
 # make_xgboost_models <- function(one_country){
 country_training <- training %>% 
+  filter(country == one_country)
+
+country_test <- test %>% 
   filter(country == one_country)
 
 xgboost_recipe <- recipe(cagr_5_year ~ 
@@ -62,50 +67,53 @@ xgboost_grid <- grid_regular(min_n(),
                              loss_reduction(),
                              levels = 5)
 
-xgboost_model <- boost_tree(
-  mode = "regression",
-  trees = 1000,
-  min_n = tune(),
-  tree_depth = tune(), #tune(),
-  learn_rate = tune(),
-  loss_reduction = tune()) %>% 
+xgboost_model <- boost_tree(mode = "regression",
+                            trees = 1000,
+                            min_n = tune(),
+                            tree_depth = tune(), #tune(),
+                            learn_rate = tune(),
+                            loss_reduction = tune()) %>% 
   set_engine("xgboost")
 
-xgboost_prepared %>% juice
+# xgboost_prepared %>% juice
 
 xgboost_wf <- workflow() %>% 
   add_recipe(xgboost_recipe) %>% 
   add_model(xgboost_model)
 
-# 30 min
+# 10.3 min
 xgboost_res <- xgboost_wf %>% 
   tune_grid(resamples = xgboost_folds,
             grid = xgboost_grid,
             metrics = metric_set(mae, mape, rmse, rsq))
 
-xgboost_res %>% collect_metrics() %>% print(n = 250)
+# xgboost_res %>% collect_metrics() %>% print(n = 250)
 
-xgboost_fit <- xgboost_wf %>% finalize_workflow(xgboost_res %>%
-                                                  select_best("rmse")) %>% 
-  fit(xgboost_prepared %>% juice())
+xgboost_fit <- xgboost_wf %>% 
+  finalize_workflow(xgboost_trained %>%
+                      select_best("rmse")) %>% 
+  fit(model_data_prepared %>% juice())
 
 xgboost_fit %>% 
   pull_workflow_fit() %>% 
-  vip()
+  vip() +
+  theme_minimal()
 
-#####
+xgb_pred <- xgboost_fit %>% 
+  predict(model_data_prepared %>% 
+            bake(country_test)) %>% 
+  pull(.pred)
 
+tibble(date = country_test$date, 
+       actual = country_test$cagr_5_year, 
+       pred = xgb_pred) %>% 
+  pivot_longer(actual:pred) %>% 
+  ggplot(aes(date, value, color = name)) +
+  geom_line() + 
+  theme_minimal()
 
-
-
-# xgboost_res %>%
-#   collect_metrics() %>%
-#   filter(min_n == 11,
-#          learn_rate == 0.1,
-#          loss_reduction == xgboost_res %>%
-#            collect_metrics() %>%
-#            filter(min_n == 11,
-#                   learn_rate == 0.1) %>%
-#            slice(7) %>%
-# pull(loss_reduction))
-
+# 0.0338
+tibble(date = country_test$date, 
+       actual = country_test$cagr_5_year, 
+       pred = xgb_pred) %>% 
+  summarise(mape = median(abs(((actual) - pred) / actual)))
