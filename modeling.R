@@ -268,10 +268,11 @@ output_models <- function(cagr, countries){
 plan(multisession)
 
 countries <- c("AUSTRALIA", "CANADA", "USA", "UK", "NETHERLANDS", "GERMANY",
-               "AUSTRALIA", "SPAIN")
+               "AUSTRIA", "SPAIN")
 features_formula <-  "~ cape + rate_10_year"
 
 # 28 sec
+# TODO: Fix test set length
 all_cagr_results <- future_map(cagrs,
                                ~output_models(.x, countries),
                                .progress = TRUE)
@@ -371,7 +372,7 @@ plot_forecasts <- function(model, cagr) {
           axis.text.x = element_text(angle = 45))
 }
 
-plot_forecasts("ARIMA", cagrs[10])
+plot_forecasts("ARIMA", cagrs[5])
 
 # FIXME everything below this line
 
