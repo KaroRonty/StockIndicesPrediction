@@ -11,7 +11,7 @@ library(doParallel)
 if(exists("cl")){
   stopCluster(cl)
 }
-cl <- makePSOCKcluster(parallel::detectCores(logical = FALSE))
+cl <- makePSOCKcluster(parallel::detectCores(logical = TRUE))
 registerDoParallel(cl)
 
 # Which CAGR to use
@@ -216,12 +216,13 @@ xgb_pred <- xgboost_fit %>%
             bake(test)) %>% 
   pull(.pred)
 
-pred_vs_actual_xgboost <- tibble(date = test$date, 
-                                 country = to_model_mm %>% 
-                                   filter(date >= yearmonth(leakage_end_date)) %>% 
-                                   pull(country),
-                                 actual = test$cagr_n_year, 
-                                 pred = xgb_pred)
+pred_vs_actual_xgboost <- tibble(
+  date = test$date, 
+  country = to_model_mm %>% 
+    filter(date >= yearmonth(leakage_end_date)) %>% 
+    pull(country),
+  actual = test$cagr_n_year, 
+  pred = xgb_pred)
 
 pred_vs_actual_xgboost %>% 
   pivot_longer(actual:pred)  %>% 
@@ -247,7 +248,7 @@ mean_predictions <- tibble(date = to_model_mm %>%
                              pull(country),
                            actual = training_temp$cagr_n_year) %>% 
   filter(country %in% c("AUSTRALIA", "CANADA", "USA", "UK", 
-                        "NETHERLANDS", "GERMANY", "SPAIN", "SWITZERLAND")) %>% 
+                        "NETHERLANDS", "GERMANY", "SPAIN", "SWITZERLAND")) %>%
   group_by(country) %>% 
   summarise(mean_prediction = mean(actual, na.rm = TRUE))
 
@@ -266,6 +267,6 @@ pred_vs_actual_xgboost %>%
   inner_join(mean_predictions) %>% 
   group_by(country) %>% 
   summarise(xgb_mape = median(abs(((actual) - pred) / actual)),
-            mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>% 
+            mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
   ungroup() %>% 
   summarise_if(is.numeric, median)
