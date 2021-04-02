@@ -1,27 +1,9 @@
+library(vip)
 library(useful)
+library(parallel)
 library(lubridate)
 library(tidymodels)
-
-# Which CAGR to use
-selected_cagr <- 5
-cagr_name <- paste0("cagr_", selected_cagr, "_year")
-
-# How many years ahead to create CAGRs for sets
-lead_years <- 1:10
-
-# Data frames and corresponding predictors to use in mapping
-dfs <- c("capes_long","rate_10_year_long",
-         "unemployment_long", "dividends_long",
-         "s_rate_10_year_long", "cpi_long")
-cagrs <- paste0("cagr_", lead_years, "_year")
-predictors <- c("cape", "dividend_yield",
-                "rate_10_year", "dividend_yield", "unemployment", 
-                "s_rate_10_year", "cpi") 
-
-source("functions.R")
-# FIXME
-# suppressMessages(source("extract_data.R"))
-to_model_exploration <- readRDS("to_model_exploration.RDS")
+library(doParallel)
 
 to_model_temp <- to_model_exploration %>% 
   # filter(country == selected_country) %>% # TODO
@@ -29,7 +11,7 @@ to_model_temp <- to_model_exploration %>%
   rename(cagr_n_year := !!cagr_name) %>% 
   mutate_if(is.numeric, ~if_else(is.na(.x), 1000, .x)) %>% 
   filter(date > yearmonth(ymd("1981-01-01")))
-
+  
 kept_countries <- to_model_temp %>% 
   as_tibble() %>% 
   group_by(country) %>% 
@@ -150,5 +132,5 @@ model_recipe <- recipe(cagr_n_year ~ # FIXME
                          rate_10_year + 
                          unemployment +
                          s_rate_10_year +
-                         cpi, # TODO unemployment
+                         cpi, 
                        data = model_training)
