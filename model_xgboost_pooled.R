@@ -1,14 +1,11 @@
-library(vip)
-library(parallel)
-library(doParallel)
-
 if(exists("cl")){
-  print("Stopping previous XGBoost cluster and starting a new one...")
+  print("Starting XGBoost cluster...")
   stopCluster(cl)
   rm(cl)
-  cl <- makePSOCKcluster(parallel::detectCores(logical = TRUE))
-  registerDoParallel(cl)
 }
+
+cl <- makePSOCKcluster(parallel::detectCores(logical = TRUE))
+registerDoParallel(cl)
 
 set.seed(42)
 xgboost_grid <- grid_latin_hypercube(
@@ -101,17 +98,20 @@ importance_xgboost <- xgboost_model %>%
   ggtitle("XGBoost") +
   theme_minimal()
 
-pred_vs_actual_xgboost %>% 
-  inner_join(mean_predictions) %>% 
-  group_by(country) %>% 
-  summarise(xgb_mape = median(abs(((actual) - pred) / actual)),
-            mean_mape = median(abs(((actual) - mean_prediction) / actual)))
+suppressMessages(
+  pred_vs_actual_xgboost %>% 
+    inner_join(mean_predictions) %>% 
+    group_by(country) %>% 
+    summarise(xgb_mape = median(abs(((actual) - pred) / actual)),
+              mean_mape = median(abs(((actual) - mean_prediction) / actual))))
 
-pred_vs_actual_xgboost %>% 
-  inner_join(mean_predictions) %>% 
-  group_by(country) %>% 
-  summarise(xgb_mape = median(abs(((actual) - pred) / actual)),
-            mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
-  ungroup() %>% 
-  summarise_if(is.numeric, median) %>% 
+suppressMessages(
+  pred_vs_actual_xgboost %>% 
+    inner_join(mean_predictions) %>% 
+    group_by(country) %>% 
+    summarise(
+      xgb_mape = median(abs(((actual) - pred) / actual)),
+      mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
+    ungroup() %>% 
+    summarise_if(is.numeric, median)) %>% 
   print()
