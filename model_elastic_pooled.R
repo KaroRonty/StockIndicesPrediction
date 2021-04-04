@@ -151,21 +151,6 @@ pred_vs_actual_elastic %>%
   theme_minimal() +
   theme(legend.position = "none")
 
-
-training_temp <- model_training_elastic %>% 
-  as_tibble()
-
-mean_predictions <- tibble(date = to_model_mm %>% 
-                             filter(date < yearmonth(leakage_start_date)) %>% 
-                             pull(date), 
-                           country = to_model_mm %>% 
-                             filter(date < yearmonth(leakage_start_date)) %>% 
-                             pull(country),
-                           actual = training_temp$cagr_n_year) %>% 
-  filter(country %in% countries_to_predict) %>% 
-  group_by(country) %>% 
-  summarise(mean_prediction = mean(actual, na.rm = TRUE))
-
 importance_elastic <- elastic_model %>% 
   pull_workflow_fit() %>% 
   vip() +

@@ -50,7 +50,6 @@ max_data_date <- to_model %>%
   pull(date) %>% 
   max()
 
-# Test set is has a maximum length based on CAGR years
 leakage_end_date <- max(as.Date(max_data_date) - months(187), 
                         as.Date(max_data_date) -  years(10))
 
@@ -134,3 +133,17 @@ model_recipe <- recipe(cagr_n_year ~ # FIXME
                          s_rate_10_year +
                          cpi, 
                        data = model_training)
+
+training_temp <- model_training %>% 
+  as_tibble()
+
+mean_predictions <- tibble(date = to_model_mm %>% 
+                             filter(date < yearmonth(leakage_start_date)) %>% 
+                             pull(date), 
+                           country = to_model_mm %>% 
+                             filter(date < yearmonth(leakage_start_date)) %>% 
+                             pull(country),
+                           actual = training_temp$cagr_n_year) %>% 
+  filter(country %in% countries_to_predict) %>% 
+  group_by(country) %>% 
+  summarise(mean_prediction = mean(actual, na.rm = TRUE))

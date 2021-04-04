@@ -74,21 +74,6 @@ pred_vs_actual_ensemble %>%
   theme_minimal() +
   theme(legend.position = "none")
 
-
-training_temp <- ensemble_training %>% 
-  as_tibble()
-
-mean_predictions <- tibble(date = to_model_mm %>% 
-                             filter(date < yearmonth(leakage_start_date)) %>% 
-                             pull(date), 
-                           country = to_model_mm %>% 
-                             filter(date < yearmonth(leakage_start_date)) %>% 
-                             pull(country),
-                           actual = training_temp$cagr_n_year) %>% 
-  filter(country %in% countries_to_predict) %>% 
-  group_by(country) %>% 
-  summarise(mean_prediction = mean(actual, na.rm = TRUE))
-
 importance_ensemble <- tibble(feature = c("xgboost", "rf", "elastic"),
                               Importance = rep(1/3, 3)) %>% 
   ggplot(aes(Importance, reorder(feature, Importance))) +
