@@ -38,6 +38,13 @@ model_arima <- function(selected_country){
     as_tsibble(key = "country") %>% 
     suppressMessages()
   
+  model_leakage_arima <- model_data_arima %>% 
+    filter(set == "leakage") %>%
+    select(!!colnames(model_training_arima)) %>% 
+    na.omit() %>% 
+    as_tsibble(key = "country") %>% 
+    suppressMessages()
+  
   model_test_arima <- model_data_arima %>% 
     filter(set == "test") %>%
     select(!!colnames(model_training_arima)) %>% 
@@ -45,12 +52,15 @@ model_arima <- function(selected_country){
     as_tsibble(key = "country") %>% 
     suppressMessages()
   
-  model_training_arima %>% 
-    model(arima = ARIMA(as.formula(
-      paste("cagr_n_year", 
-            "~", 
-            paste0(!!predictors[predictors %in% features_selected],
-                   collapse = " + ")))))
+  list(model = model_training_arima %>% 
+         model(arima = ARIMA(as.formula(
+           paste("cagr_n_year", 
+                 "~", 
+                 paste0(!!predictors[predictors %in% features_selected],
+                        collapse = " + "))))),
+       training = model_training_arima,
+       leakage = model_leakage_arima,
+       test = model_test_arima)
 }
 
 if(exists("cl")){
@@ -64,3 +74,59 @@ registerDoParallel(cl)
 
 arima_model <- future_map(countries_to_predict,
                           ~model_arima(.x))
+
+arima_fcast <- future_map(seq_len(length(arima_model)),
+                         ~arima_model %>% 
+                           pluck(.x) %>% 
+                           pluck(1) %>% 
+                           forecast(arima_model %>% 
+                                      pluck(.x) %>% 
+                                      pluck(4))) %>% 
+  reduce(bind_rows)
+
+arima_pred <- future_map(seq_len(length(arima_model)),
+                         ~arima_fcast %>% 
+                           pull(.mean)) %>% 
+  reduce(c)
+
+arima_actual <- future_map(seq_len(length(arima_model)),
+                           ~arima_model %>% 
+                             pluck(.x) %>% 
+                             pluck(4) %>% 
+                             pull(cagr_n_year)) %>% 
+  reduce(c)
+
+arima_training_to_plot <- future_map(seq_len(length(arima_model)),
+  ~arima_model %>% 
+    pluck(.x) %>% 
+    pluck(2) %>% 
+    select(country, date, cagr_n_year)) %>% 
+  reduce(bind_rows)
+
+arima_leakage_to_plot <- future_map(
+  seq_len(length(arima_model)),
+  ~arima_model %>% 
+    pluck(.x) %>% 
+    pluck(3) %>% 
+    select(country, date, cagr_n_year)) %>% 
+  reduce(bind_rows)
+
+arima_actual_to_plot <- future_map(
+  seq_len(length(arima_model)),
+  ~arima_model %>% 
+    pluck(.x) %>% 
+    pluck(4) %>% 
+    select(country, date, cagr_n_year)) %>% 
+  reduce(bind_rows)
+
+arima_fcast %>% 
+  autoplot(color = "red") +
+  autolayer(arima_training_to_plot, color = "black") +
+  autolayer(arima_leakage_to_plot, color = "gray") +
+  autolayer(arima_actual_to_plot, color = "black") +
+  facet_wrap(~country) +
+  labs(title = "ARIMA",
+       x = "Date",
+       y = cagr_name) +
+  theme_minimal() +
+  theme(legend.position = "none")
