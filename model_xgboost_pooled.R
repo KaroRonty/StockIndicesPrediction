@@ -9,21 +9,35 @@ registerDoParallel(cl)
 
 set.seed(42)
 xgboost_grid <- grid_latin_hypercube(
-  # trees(),#c(1500, 3000)),
-  # min_n(),#c(30, 70)),
-  # tree_depth(),#c(15, 60)),
-  # learn_rate(),#c(0.001, 0.1)),
-  loss_reduction(),
-  size = 2) %>% 
-  mutate_if(is.integer, as.numeric)# %>% 
-# mutate(loss_reduction = c(1.000000e-10, 5.623413e-05))
+  tree_depth(c(30, 70)), # c(15, 60)
+  trees(c(1000, 3500)),
+  learn_rate(), # c(0.001, 0.1)
+  finalize(mtry(), model_training),
+  min_n(), # c(30, 70)
+  loss_reduction(), # c(1e-5, 1e-10)
+  sample_size = finalize(sample_prop(), model_training),
+  size = 200) %>% 
+  mutate_if(is.integer, as.numeric)
+
+# Hyperparameter ranges
+xgboost_grid %>% 
+  summarise_all(c(min = min, max = max)) %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rename(value = 1) %>% 
+  rownames_to_column("hyperparameter") %>% 
+  mutate(value = as.character(value)) %>% 
+  as_tibble() %>% 
+  arrange(hyperparameter)
 
 xgboost_specification <- boost_tree(mode = "regression",
-                                    trees = 3000,
-                                    min_n = 30,
-                                    tree_depth = 60, 
-                                    learn_rate = 0.01,
-                                    loss_reduction = 1e-10) %>%
+                                    tree_depth = tune(), #60, 
+                                    trees = tune(), #tune(), #3000,
+                                    learn_rate = tune(), #0.01, #tune(), #0.01,
+                                    mtry = tune(), #2, 
+                                    min_n = tune(), #30, #30,
+                                    loss_reduction = tune(),
+                                    sample_size = tune()) %>%  #1e-10) %>%
   set_engine("xgboost", nthread = 12)
 
 xgboost_workflow <- workflow() %>%

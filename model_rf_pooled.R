@@ -10,15 +10,25 @@ registerDoParallel(cl)
 set.seed(42)
 rf_grid <- grid_latin_hypercube(
   trees(c(100, 500)),
-  # min_n(),
-  size = 2) %>% 
-  mutate_if(is.integer, as.numeric)# %>% 
-# mutate(loss_reduction = c(1.000000e-10, 5.623413e-05))
+  min_n(c(2, 5)),
+  size = 25) %>% 
+  mutate_if(is.integer, as.numeric)
+
+# Hyperparameter ranges
+rf_grid %>% 
+  summarise_all(c(min = min, max = max)) %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rename(value = 1) %>% 
+  rownames_to_column("hyperparameter") %>% 
+  mutate(value = as.character(value)) %>% 
+  as_tibble() %>% 
+  arrange(hyperparameter)
 
 rf_specification <- rand_forest(mode = "regression",
                                 mtry = 46,
-                                trees = 380, #tune(),
-                                min_n = 2) %>%
+                                trees = tune(), # 380
+                                min_n = tune()) %>% # 2
   set_engine("ranger", 
              importance = "impurity", 
              num.threads = 12)

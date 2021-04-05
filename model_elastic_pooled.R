@@ -91,9 +91,19 @@ set.seed(42)
 elastic_grid <- grid_latin_hypercube(
   penalty(),
   mixture(),
-  size = 10) %>% # FIXME
-  mutate_if(is.integer, as.numeric)# %>% 
-# mutate(loss_reduction = c(1.000000e-10, 5.623413e-05))
+  size = 100) %>% # FIXME
+  mutate_if(is.integer, as.numeric)
+
+# Hyperparameter ranges
+elastic_grid %>% 
+  summarise_all(c(min = min, max = max)) %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rename(value = 1) %>% 
+  rownames_to_column("hyperparameter") %>% 
+  mutate(value = as.character(value)) %>% 
+  as_tibble() %>% 
+  arrange(hyperparameter)
 
 elastic_specification <- linear_reg(mode = "regression",
                                     penalty = tune(),
