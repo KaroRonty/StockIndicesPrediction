@@ -126,36 +126,23 @@ elastic_model <- elastic_workflow %>%
                       select_by_one_std_err("mape", metric = "mape")) %>% 
   fit(model_training_elastic)
 
-elastic_pred <- elastic_model %>% 
-  predict(model_test_elastic) %>% 
-  pull(.pred)
+preds_vs_actuals <- preds_vs_actuals %>% 
+  mutate(elastic_pred = elastic_model %>% 
+           predict(model_test_elastic) %>% 
+           pull(.pred))
 
-elastic_actual_pred <- elastic_model %>% 
-  predict(model_training_elastic) %>% 
-  pull(.pred)
+training_preds_vs_actuals <- training_preds_vs_actuals %>% 
+  mutate(elastic_pred = elastic_model %>% 
+           predict(model_training_elastic) %>% 
+           pull(.pred))
 
-elastic_actual <- model_training_elastic %>% 
-  as_tibble() %>% 
-  pull(cagr_n_year)
-
-pred_vs_actual_elastic <- tibble(
-  date = model_test_elastic %>% 
-    as_tibble() %>% 
-    pull(date) %>% 
-    yearmonth(), 
-  country = to_model_mm %>% 
-    filter(date >= yearmonth(leakage_end_date)) %>% 
-    pull(country),
-  actual = elastic_actual, 
-  pred = elastic_pred)
-
-pred_vs_actual_elastic %>% 
-  pivot_longer(actual:pred)  %>% 
+preds_vs_actuals %>% 
+  pivot_longer(c(actual, elastic_pred)) %>% 
   filter(country %in% countries_to_predict) %>% 
   ggplot(aes(date, value, color = name)) +
   geom_line() + 
   facet_wrap(~country) +
-  ggtitle("elastic") +
+  ggtitle("Elastic Net") +
   xlab("Date") +
   ylab(cagr_name) +
   theme_minimal() +
@@ -164,22 +151,22 @@ pred_vs_actual_elastic %>%
 importance_elastic <- elastic_model %>% 
   pull_workflow_fit() %>% 
   vip() +
-  ggtitle("elastic") +
+  ggtitle("Elastic Net") +
   theme_minimal()
 
 suppressMessages(
-  pred_vs_actual_elastic %>% 
+  preds_vs_actuals %>% 
     inner_join(mean_predictions) %>% 
     group_by(country) %>% 
-    summarise(elastic_mape = median(abs(((actual) - pred) / actual)),
+    summarise(elastic_mape = median(abs(((actual) - elastic_pred) / actual)),
               mean_mape = median(abs(((actual) - mean_prediction) / actual))))
 
 suppressMessages(
-  pred_vs_actual_elastic %>% 
+  preds_vs_actuals %>% 
     inner_join(mean_predictions) %>% 
     group_by(country) %>% 
     summarise(
-      elastic_mape = median(abs(((actual) - pred) / actual)),
+      elastic_mape = median(abs(((actual) - elastic_pred) / actual)),
       mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
     ungroup() %>% 
     summarise_if(is.numeric, median)) %>% 

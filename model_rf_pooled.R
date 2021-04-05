@@ -49,36 +49,23 @@ rf_model <- rf_workflow %>%
                       select_by_one_std_err("mape", metric = "mape")) %>% 
   fit(model_training)
 
-rf_pred <- rf_model %>% 
-  predict(model_test) %>% 
-  pull(.pred)
+preds_vs_actuals <- preds_vs_actuals %>% 
+  mutate(rf_pred = rf_model %>% 
+           predict(model_test) %>% 
+           pull(.pred))
 
-rf_actual_pred <- rf_model %>% 
-  predict(model_training) %>% 
-  pull(.pred)
+training_preds_vs_actuals <- training_preds_vs_actuals %>% 
+  mutate(rf_pred = rf_model %>% 
+           predict(model_training) %>% 
+           pull(.pred))
 
-rf_actual <- model_test %>% 
-  as_tibble() %>% 
-  pull(cagr_n_year)
-
-pred_vs_actual_rf <- tibble(
-  date = model_test %>% 
-    as_tibble() %>% 
-    pull(date) %>% 
-    yearmonth(), 
-  country = to_model_mm %>% 
-    filter(date >= yearmonth(leakage_end_date)) %>% 
-    pull(country),
-  actual = rf_actual, 
-  pred = rf_pred)
-
-pred_vs_actual_rf %>% 
-  pivot_longer(actual:pred)  %>% 
+preds_vs_actuals %>% 
+  pivot_longer(c(actual, rf_pred)) %>% 
   filter(country %in% countries_to_predict) %>% 
   ggplot(aes(date, value, color = name)) +
   geom_line() + 
   facet_wrap(~country) +
-  ggtitle("rf") +
+  ggtitle("Random Forest") +
   xlab("Date") +
   ylab(cagr_name) +
   theme_minimal() +
@@ -87,22 +74,22 @@ pred_vs_actual_rf %>%
 importance_rf <- rf_model %>% 
   pull_workflow_fit() %>% 
   vip() +
-  ggtitle("rf") +
+  ggtitle("Random Forest") +
   theme_minimal()
 
 suppressMessages(
-  pred_vs_actual_rf %>% 
+  preds_vs_actuals %>% 
     inner_join(mean_predictions) %>% 
     group_by(country) %>% 
-    summarise(rf_mape = median(abs(((actual) - pred) / actual)),
+    summarise(rf_mape = median(abs(((actual) - rf_pred) / actual)),
               mean_mape = median(abs(((actual) - mean_prediction) / actual))))
 
 suppressMessages(
-  pred_vs_actual_rf %>% 
+  preds_vs_actuals %>% 
     inner_join(mean_predictions) %>% 
     group_by(country) %>% 
     summarise(
-      rf_mape = median(abs(((actual) - pred) / actual)),
+      rf_mape = median(abs(((actual) - rf_pred) / actual)),
       mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
     ungroup() %>% 
     summarise_if(is.numeric, median)) %>% 

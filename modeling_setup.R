@@ -147,3 +147,27 @@ mean_predictions <- tibble(date = to_model_mm %>%
   filter(country %in% countries_to_predict) %>% 
   group_by(country) %>% 
   summarise(mean_prediction = mean(actual, na.rm = TRUE))
+
+# Initialize tibbles for predictions
+preds_vs_actuals <- tibble(
+  date = model_test %>% 
+    as_tibble() %>% 
+    pull(date) %>% 
+    yearmonth(), 
+  country = to_model_mm %>% 
+    filter(date >= yearmonth(leakage_end_date)) %>% 
+    pull(country),
+  actual = model_test %>% 
+    as_tibble() %>% 
+    pull(cagr_n_year))
+
+training_preds_vs_actuals <- tibble(
+  date = model_training %>% 
+    as_tibble() %>% 
+    pull(date) %>% 
+    yearmonth(), 
+  country = to_model_mm %>% 
+    filter(date < yearmonth(leakage_start_date)) %>% 
+    pull(country),
+  actual = model_training %>% 
+    as_tibble() %>% 

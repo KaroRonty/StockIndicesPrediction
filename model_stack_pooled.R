@@ -7,29 +7,15 @@ if(exists("cl")){
 cl <- makePSOCKcluster(parallel::detectCores(logical = TRUE))
 registerDoParallel(cl)
 
-to_stack <- to_model_mm %>% 
-  as_tibble() %>% 
-  select(date, country, cagr_n_year) %>% 
-  mutate(date = yearmonth(date),
-         set = case_when(date < yearmonth(leakage_start_date) ~ "training",
-                         date >= yearmonth(leakage_start_date) & 
-                           date < yearmonth(leakage_end_date) ~ "leakage",
-                         date >= yearmonth(leakage_end_date) ~ "test")) %>% 
-  mutate(xgboost = c(xgboost_actual_pred, 
-                     rep(NA, nrow(.) - 
-                           length(xgboost_actual_pred) - 
-                           length(xgboost_pred)),
-                     xgboost_pred),
-         rf = c(rf_actual_pred, 
-                rep(NA, nrow(.) - 
-                      length(rf_actual_pred) - 
-                      length(rf_pred)),
-                rf_pred),
-         elastic = c(elastic_actual_pred, 
-                     rep(NA, nrow(.) - 
-                           length(elastic_actual_pred) - 
-                           length(elastic_pred)),
-                     elastic_pred))
+to_stack <- training_preds_vs_actuals %>% 
+  mutate(set = "training") %>% 
+  full_join(split_indices_df %>% 
+              select(date, actual = cagr_n_year, set) %>% 
+              filter(set == "leakage")) %>% 
+  bind_rows(preds_vs_actuals %>% 
+              mutate(set = "test")) %>% 
+  rename_with(~str_remove(.x, "_pred")) %>% 
+  rename(cagr_n_year = actual)
 
 stack_data <- make_splits(split_indices, 
                           to_stack %>% 
@@ -93,31 +79,18 @@ stack_model <- stack_workflow %>%
                       select_by_one_std_err("mape", metric = "mape")) %>% 
   fit(stack_training)
 
-stack_pred <- stack_model %>% 
-  predict(stack_test) %>% 
-  pull(.pred)
+preds_vs_actuals <- preds_vs_actuals %>% 
+  mutate(stack_pred = stack_model %>% 
+           predict(stack_test) %>% 
+           pull(.pred))
 
-stack_actual_pred <- stack_model %>% 
-  predict(stack_training) %>% 
-  pull(.pred)
+training_preds_vs_actuals <- training_preds_vs_actuals %>% 
+  mutate(stack_pred = stack_model %>% 
+           predict(stack_training) %>% 
+           pull(.pred))
 
-stack_actual <- stack_test %>% 
-  as_tibble() %>% 
-  pull(cagr_n_year)
-
-pred_vs_actual_stack <- tibble(
-  date = stack_test %>% 
-    as_tibble() %>% 
-    pull(date) %>% 
-    yearmonth(), 
-  country = to_model_mm %>% 
-    filter(date >= yearmonth(leakage_end_date)) %>% 
-    pull(country),
-  actual = stack_actual, 
-  pred = stack_pred)
-
-pred_vs_actual_stack %>% 
-  pivot_longer(actual:pred)  %>% 
+preds_vs_actuals %>% 
+  pivot_longer(c(actual, stack_pred))  %>% 
   filter(country %in% countries_to_predict) %>% 
   ggplot(aes(date, value, color = name)) +
   geom_line() + 
@@ -136,23 +109,23 @@ importance_stack <- stack_model$fit$fit$fit %>%
   rownames_to_column("feature") %>% 
   ggplot(aes(Importance, reorder(feature, Importance))) +
   geom_col() +
-  labs(title = "stack",
+  labs(title = "Stacked model",
        y = NULL) +
   theme_minimal()
 
 suppressMessages(
-  pred_vs_actual_stack %>% 
+  preds_vs_actuals %>% 
     inner_join(mean_predictions) %>% 
     group_by(country) %>% 
-    summarise(stack_mape = median(abs(((actual) - pred) / actual)),
+    summarise(stack_mape = median(abs(((actual) - stack_pred) / actual)),
               mean_mape = median(abs(((actual) - mean_prediction) / actual))))
 
 suppressMessages(
-  pred_vs_actual_stack %>% 
+  preds_vs_actuals %>% 
     inner_join(mean_predictions) %>% 
     group_by(country) %>% 
     summarise(
-      stack_mape = median(abs(((actual) - pred) / actual)),
+      stack_mape = median(abs(((actual) - stack_pred) / actual)),
       mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
     ungroup() %>% 
     summarise_if(is.numeric, median)) %>% 
