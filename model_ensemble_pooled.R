@@ -1,74 +1,42 @@
-to_ensemble <- to_model_mm %>% 
-  as_tibble() %>% 
-  select(date, country, cagr_n_year) %>% 
-  mutate(date = yearmonth(date),
-         set = case_when(date < yearmonth(leakage_start_date) ~ "training",
-                         date >= yearmonth(leakage_start_date) & 
-                           date < yearmonth(leakage_end_date) ~ "leakage",
-                         date >= yearmonth(leakage_end_date) ~ "test")) %>% 
-  mutate(xgboost = c(xgboost_actual_pred, 
-                     rep(NA, nrow(.) - 
-                           length(xgboost_actual_pred) - 
-                           length(xgboost_pred)),
-                     xgboost_pred),
-         rf = c(rf_actual_pred, 
-                rep(NA, nrow(.) - 
-                      length(rf_actual_pred) - 
-                      length(rf_pred)),
-                rf_pred),
-         elastic = c(elastic_actual_pred, 
-                     rep(NA, nrow(.) - 
-                           length(elastic_actual_pred) - 
-                           length(elastic_pred)),
-                     elastic_pred))
+preds_vs_actuals <- preds_vs_actuals %>% 
+  group_by_all() %>% 
+  mutate(ensemble_mean_pred = mean(c(rf_pred, 
+                                     elastic_pred, 
+                                     xgboost_pred)),
+         ensemble_median_pred = median(c(rf_pred, 
+                                         elastic_pred, 
+                                         xgboost_pred))) %>% 
+  ungroup()
 
-ensemble_data <- make_splits(split_indices, 
-                             to_ensemble %>% 
-                               # select(-date) %>% 
-                               mutate(date = as.numeric(date)) %>%
-                               select(-country, -set) %>% 
-                               as.matrix())
-ensemble_training <- training(ensemble_data)
-ensemble_test <- testing(ensemble_data)
+training_preds_vs_actuals <- training_preds_vs_actuals %>% 
+  group_by_all() %>% 
+  mutate(ensemble_mean_pred = mean(c(rf_pred, 
+                                     elastic_pred, 
+                                     xgboost_pred)),
+         ensemble_median_pred = median(c(rf_pred, 
+                                         elastic_pred, 
+                                         xgboost_pred))) %>% 
+  ungroup()
 
-
-
-ensemble_actual_pred <- to_ensemble %>% 
-  filter(set == "training") %>% 
-  group_by(date) %>% 
-  mutate(ensemble_pred_mean = mean(c(xgboost, rf, elastic)),
-         ensemble_pred_median = median(c(xgboost, rf, elastic))) %>% 
-  pull(ensemble_pred_mean)
-
-ensemble_pred <- to_ensemble %>% 
-  filter(set == "test") %>% 
-  group_by(date) %>% 
-  mutate(ensemble_pred_mean = mean(c(xgboost, rf, elastic)),
-         ensemble_pred_median = median(c(xgboost, rf, elastic))) %>% 
-  pull(ensemble_pred_mean)
-
-ensemble_actual <- to_ensemble %>% 
-  filter(set == "test") %>% 
-  pull(cagr_n_year)
-
-pred_vs_actual_ensemble <- tibble(
-  date = ensemble_test %>% 
-    as_tibble() %>% 
-    pull(date) %>% 
-    yearmonth(), 
-  country = to_model_mm %>% 
-    filter(date >= yearmonth(leakage_end_date)) %>% 
-    pull(country),
-  actual = ensemble_actual, 
-  pred = ensemble_pred)
-
-pred_vs_actual_ensemble %>% 
-  pivot_longer(actual:pred)  %>% 
+preds_vs_actuals %>% 
+  pivot_longer(c(actual, ensemble_mean_pred)) %>% 
   filter(country %in% countries_to_predict) %>% 
   ggplot(aes(date, value, color = name)) +
   geom_line() + 
   facet_wrap(~country) +
-  ggtitle("ensemble") +
+  ggtitle("Ensemble model (mean)") +
+  xlab("Date") +
+  ylab(cagr_name) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+preds_vs_actuals %>% 
+  pivot_longer(c(actual, ensemble_median_pred)) %>% 
+  filter(country %in% countries_to_predict) %>% 
+  ggplot(aes(date, value, color = name)) +
+  geom_line() + 
+  facet_wrap(~country) +
+  ggtitle("Ensemble model (median)") +
   xlab("Date") +
   ylab(cagr_name) +
   theme_minimal() +
@@ -83,18 +51,24 @@ importance_ensemble <- tibble(feature = c("xgboost", "rf", "elastic"),
   theme_minimal()
 
 suppressMessages(
-  pred_vs_actual_ensemble %>% 
+  preds_vs_actuals %>% 
     inner_join(mean_predictions) %>% 
     group_by(country) %>% 
-    summarise(ensemble_mape = median(abs(((actual) - pred) / actual)),
+    summarise(ensemble_mean_mape = 
+                median(abs(((actual) - ensemble_mean_pred) / actual)),
+              ensemble_median_mape = 
+                median(abs(((actual) - ensemble_median_pred) / actual)),
               mean_mape = median(abs(((actual) - mean_prediction) / actual))))
 
 suppressMessages(
-  pred_vs_actual_ensemble %>% 
+  preds_vs_actuals %>% 
     inner_join(mean_predictions) %>% 
     group_by(country) %>% 
     summarise(
-      ensemble_mape = median(abs(((actual) - pred) / actual)),
+      ensemble_mean_mape = 
+        median(abs(((actual) - ensemble_mean_pred) / actual)),
+      ensemble_median_mape = 
+        median(abs(((actual) - ensemble_median_pred) / actual)),
       mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
     ungroup() %>% 
     summarise_if(is.numeric, median)) %>% 
