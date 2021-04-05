@@ -1,13 +1,40 @@
-to_model_arima <- to_model_mm %>% 
+to_model_arima_temp <- build.x(~ .,
+                               data = to_model_mm[, -1:-2],
+                               contrasts = FALSE) %>% 
+  as_tibble() %>% 
+  add_column(date = to_model_mm$date) %>% 
+  # TODO
   mutate_if(is.numeric, ~ifelse(.x == 1000, NA, .x))
 
-model_data_arima <- make_splits(split_indices, 
-                                to_model_arima %>% 
-                                  # select(-date) %>% 
-                                  mutate(date = as.numeric(date)) %>%
-                                  as.matrix())
-model_training_arima <- training(model_data_arima)
-model_test_arima <- testing(model_data_arima)
+model_data_arima_temp <- make_splits(split_indices, 
+                                     to_model_arima_temp %>% 
+                                       # select(-date) %>% 
+                                       mutate(date = as.numeric(date)) %>%
+                                       as.matrix())
+model_training_arima_temp <- training(model_data_arima_temp)
+model_test_arima_temp <- testing(model_data_arima_temp)
+
+model_recipe_arima <- recipe(cagr_n_year ~ # FIXME
+                               cape + 
+                               dividend_yield + 
+                               rate_10_year + # FIXME
+                               unemployment +
+                               s_rate_10_year +
+                               cpi, 
+                             data = model_training_arima_temp) %>% 
+  step_knnimpute(cape,
+                 dividend_yield,
+                 rate_10_year, 
+                 unemployment, 
+                 s_rate_10_year,
+                 cpi)
+
+to_model_arima <- model_recipe_arima %>% 
+  prep() %>% 
+  bake(to_model_arima_temp) %>% 
+  mutate(date = to_model_mm$date,
+         country = to_model_mm$country,
+         .before = 1)
 
 model_arima <- function(selected_country){
   
@@ -33,8 +60,8 @@ model_arima <- function(selected_country){
   
   model_training_arima <- model_data_arima %>% 
     filter(set == "training") %>% 
-    select(country, !!features_selected) %>% 
-    na.omit() %>% 
+    select(country, !!features_selected) %>%
+    # na.omit() %>% 
     as_tsibble(key = "country") %>% 
     suppressMessages()
   
@@ -72,22 +99,34 @@ if(exists("cl")){
 cl <- makePSOCKcluster(parallel::detectCores(logical = TRUE))
 registerDoParallel(cl)
 
+tic_arima <- Sys.time()
 arima_model <- future_map(countries_to_predict,
                           ~model_arima(.x))
+(toc_arima <- Sys.time() - tic_arima)
 
 arima_fcast <- future_map(seq_len(length(arima_model)),
-                         ~arima_model %>% 
-                           pluck(.x) %>% 
-                           pluck(1) %>% 
-                           forecast(arima_model %>% 
-                                      pluck(.x) %>% 
-                                      pluck(4))) %>% 
+                          ~arima_model %>% 
+                            pluck(.x) %>% 
+                            pluck(1) %>% 
+                            forecast(arima_model %>% 
+                                       pluck(.x) %>% 
+                                       pluck(4))) %>% 
   reduce(bind_rows)
 
-arima_pred <- future_map(seq_len(length(arima_model)),
-                         ~arima_fcast %>% 
-                           pull(.mean)) %>% 
+arima_fitted <- future_map(seq_len(length(arima_model)),
+                           ~arima_model %>% 
+                             pluck(.x) %>% 
+                             pluck(1) %>% 
+                             pull(arima) %>%
+                             pluck(1) %>%
+                             .$fit %>%
+                             .$est %>%
+                             .$.fitted) %>%
   reduce(c)
+
+
+arima_pred <- arima_fcast %>% 
+  pull(.mean)
 
 arima_actual <- future_map(seq_len(length(arima_model)),
                            ~arima_model %>% 
@@ -97,10 +136,10 @@ arima_actual <- future_map(seq_len(length(arima_model)),
   reduce(c)
 
 arima_training_to_plot <- future_map(seq_len(length(arima_model)),
-  ~arima_model %>% 
-    pluck(.x) %>% 
-    pluck(2) %>% 
-    select(country, date, cagr_n_year)) %>% 
+                                     ~arima_model %>% 
+                                       pluck(.x) %>% 
+                                       pluck(2) %>% 
+                                       select(country, date, cagr_n_year)) %>% 
   reduce(bind_rows)
 
 arima_leakage_to_plot <- future_map(
@@ -130,3 +169,29 @@ arima_fcast %>%
        y = cagr_name) +
   theme_minimal() +
   theme(legend.position = "none")
+
+pred_vs_actual_arima <- arima_actual_to_plot %>% 
+  as_tibble() %>% 
+  rename(actual = cagr_n_year) %>% 
+  inner_join(arima_fcast %>% 
+               as_tibble() %>% 
+               select(date, country, arima_pred = .mean)) %>% 
+  suppressMessages()
+
+suppressMessages(
+  pred_vs_actual_arima %>% 
+    inner_join(mean_predictions) %>% 
+    group_by(country) %>% 
+    summarise(elastic_mape = median(abs(((actual) - arima_pred) / actual)),
+              mean_mape = median(abs(((actual) - mean_prediction) / actual))))
+
+suppressMessages(
+  pred_vs_actual_arima %>% 
+    inner_join(mean_predictions) %>% 
+    group_by(country) %>% 
+    summarise(
+      elastic_mape = median(abs(((actual) - arima_pred) / actual)),
+      mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
+    ungroup() %>% 
+    summarise_if(is.numeric, median)) %>% 
+  print()

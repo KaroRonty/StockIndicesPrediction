@@ -1,4 +1,6 @@
 library(vip)
+library(fable)
+library(furrr)
 library(useful)
 library(parallel)
 library(lubridate)
@@ -171,3 +173,4 @@ training_preds_vs_actuals <- tibble(
     pull(country),
   actual = model_training %>% 
     as_tibble() %>% 
+    pull(cagr_n_year))

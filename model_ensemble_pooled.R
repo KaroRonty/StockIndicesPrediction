@@ -1,18 +1,27 @@
 preds_vs_actuals <- preds_vs_actuals %>% 
+  filter(country %in% countries_to_predict) %>% 
+  mutate(arima_pred = arima_pred, 
+         .after = "xgboost_pred") %>% 
   group_by_all() %>% 
   mutate(ensemble_mean_pred = mean(c(rf_pred, 
                                      elastic_pred, 
-                                     xgboost_pred)),
+                                     xgboost_pred,
+                                     arima_pred)),
          ensemble_median_pred = median(c(rf_pred, 
                                          elastic_pred, 
-                                         xgboost_pred))) %>% 
+                                         xgboost_pred,
+                                         arima_pred))) %>% 
   ungroup()
 
 training_preds_vs_actuals <- training_preds_vs_actuals %>% 
+  filter(country %in% countries_to_predict) %>% 
+  mutate(arima_pred = arima_fitted, 
+         .after = "xgboost_pred") %>% 
   group_by_all() %>% 
   mutate(ensemble_mean_pred = mean(c(rf_pred, 
                                      elastic_pred, 
-                                     xgboost_pred)),
+                                     xgboost_pred,
+                                     arima_pred)),
          ensemble_median_pred = median(c(rf_pred, 
                                          elastic_pred, 
                                          xgboost_pred))) %>% 
@@ -42,11 +51,14 @@ preds_vs_actuals %>%
   theme_minimal() +
   theme(legend.position = "none")
 
-importance_ensemble <- tibble(feature = c("xgboost", "rf", "elastic"),
-                              Importance = rep(1/3, 3)) %>% 
+importance_ensemble <- tibble(feature = c("xgboost", 
+                                          "rf", 
+                                          "elastic", 
+                                          "arima"),
+                              Importance = rep(1/4, 4)) %>% 
   ggplot(aes(Importance, reorder(feature, Importance))) +
   geom_col() +
-  labs(title = "ensemble",
+  labs(title = "Ensemble models",
        y = NULL) +
   theme_minimal()
 
