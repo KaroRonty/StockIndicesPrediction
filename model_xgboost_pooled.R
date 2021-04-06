@@ -31,19 +31,20 @@ xgboost_grid %>%
   arrange(hyperparameter)
 
 xgboost_specification <- boost_tree(mode = "regression",
-                                    tree_depth = tune(), #60, 
-                                    trees = tune(), #tune(), #3000,
-                                    learn_rate = tune(), #0.01, #tune(), #0.01,
-                                    mtry = tune(), #2, 
-                                    min_n = tune(), #30, #30,
+                                    tree_depth = tune(), 
+                                    trees = tune(), 
+                                    learn_rate = tune(), 
+                                    mtry = tune(), 
+                                    min_n = tune(), 
                                     loss_reduction = tune(),
-                                    sample_size = tune()) %>%  #1e-10) %>%
+                                    sample_size = tune()) %>% 
   set_engine("xgboost", nthread = 12)
 
 xgboost_workflow <- workflow() %>%
   add_recipe(model_recipe) %>% 
   add_model(xgboost_specification)
 
+# 4.8 h
 tic_xgboost <- Sys.time()
 xgboost_tuning_results <- tune_grid(xgboost_workflow,
                                     resamples = model_folds,
@@ -66,7 +67,7 @@ training_preds_vs_actuals <- training_preds_vs_actuals %>%
            predict(model_training) %>% 
            pull(.pred))
 
-preds_vs_actuals %>% 
+pred_plot_xgboost <- preds_vs_actuals %>% 
   pivot_longer(c(actual, xgboost_pred)) %>% 
   filter(country %in% countries_to_predict) %>% 
   ggplot(aes(date, value, color = name)) +
@@ -84,20 +85,21 @@ importance_xgboost <- xgboost_model %>%
   ggtitle("XGBoost") +
   theme_minimal()
 
-suppressMessages(
-  preds_vs_actuals %>% 
-    inner_join(mean_predictions) %>% 
-    group_by(country) %>% 
-    summarise(xgb_mape = median(abs(((actual) - xgboost_pred) / actual)),
-              mean_mape = median(abs(((actual) - mean_prediction) / actual))))
+preds_vs_actuals %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    xgb_mape = median(abs(((actual) - xgboost_pred) / actual)),
+    mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>% 
+  suppressMessages()
 
-suppressMessages(
-  preds_vs_actuals %>% 
-    inner_join(mean_predictions) %>% 
-    group_by(country) %>% 
-    summarise(
-      xgb_mape = median(abs(((actual) - xgboost_pred) / actual)),
-      mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
-    ungroup() %>% 
-    summarise_if(is.numeric, median)) %>% 
+preds_vs_actuals %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    xgb_mape = median(abs(((actual) - xgboost_pred) / actual)),
+    mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
+  ungroup() %>% 
+  summarise_if(is.numeric, median) %>% 
+  suppressMessages() %>% 
   print()

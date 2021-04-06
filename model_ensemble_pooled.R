@@ -1,4 +1,4 @@
-preds_vs_actuals <- preds_vs_actuals %>% 
+preds_vs_actuals_ensemble <- preds_vs_actuals %>% 
   filter(country %in% countries_to_predict) %>% 
   mutate(arima_pred = arima_pred, 
          .after = "xgboost_pred") %>% 
@@ -13,7 +13,7 @@ preds_vs_actuals <- preds_vs_actuals %>%
                                          arima_pred))) %>% 
   ungroup()
 
-training_preds_vs_actuals <- training_preds_vs_actuals %>% 
+training_preds_vs_actuals_ensemble <- training_preds_vs_actuals %>% 
   filter(country %in% countries_to_predict) %>% 
   mutate(arima_pred = arima_fitted, 
          .after = "xgboost_pred") %>% 
@@ -27,7 +27,7 @@ training_preds_vs_actuals <- training_preds_vs_actuals %>%
                                          xgboost_pred))) %>% 
   ungroup()
 
-preds_vs_actuals %>% 
+pred_plot_ensemble_mean <- preds_vs_actuals_ensemble %>% 
   pivot_longer(c(actual, ensemble_mean_pred)) %>% 
   filter(country %in% countries_to_predict) %>% 
   ggplot(aes(date, value, color = name)) +
@@ -39,7 +39,7 @@ preds_vs_actuals %>%
   theme_minimal() +
   theme(legend.position = "none")
 
-preds_vs_actuals %>% 
+pred_plot_ensemble_median <- preds_vs_actuals_ensemble %>% 
   pivot_longer(c(actual, ensemble_median_pred)) %>% 
   filter(country %in% countries_to_predict) %>% 
   ggplot(aes(date, value, color = name)) +
@@ -62,26 +62,27 @@ importance_ensemble <- tibble(feature = c("xgboost",
        y = NULL) +
   theme_minimal()
 
-suppressMessages(
-  preds_vs_actuals %>% 
-    inner_join(mean_predictions) %>% 
-    group_by(country) %>% 
-    summarise(ensemble_mean_mape = 
-                median(abs(((actual) - ensemble_mean_pred) / actual)),
-              ensemble_median_mape = 
-                median(abs(((actual) - ensemble_median_pred) / actual)),
-              mean_mape = median(abs(((actual) - mean_prediction) / actual))))
+preds_vs_actuals_ensemble %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    ensemble_mean_mape = 
+      median(abs(((actual) - ensemble_mean_pred) / actual)),
+    ensemble_median_mape = 
+      median(abs(((actual) - ensemble_median_pred) / actual)),
+    mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>% 
+  suppressMessages()
 
-suppressMessages(
-  preds_vs_actuals %>% 
-    inner_join(mean_predictions) %>% 
-    group_by(country) %>% 
-    summarise(
-      ensemble_mean_mape = 
-        median(abs(((actual) - ensemble_mean_pred) / actual)),
-      ensemble_median_mape = 
-        median(abs(((actual) - ensemble_median_pred) / actual)),
-      mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
-    ungroup() %>% 
-    summarise_if(is.numeric, median)) %>% 
+preds_vs_actuals_ensemble %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    ensemble_mean_mape = 
+      median(abs(((actual) - ensemble_mean_pred) / actual)),
+    ensemble_median_mape = 
+      median(abs(((actual) - ensemble_median_pred) / actual)),
+    mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>% 
+  ungroup() %>% 
+  summarise_if(is.numeric, median) %>% 
+  suppressMessages() %>% 
   print()

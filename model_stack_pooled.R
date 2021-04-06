@@ -23,13 +23,13 @@ split_indices_df_stack <- to_stack %>%
   mutate(.row = row_number())
 
 split_indices_stack <- list(analysis = split_indices_df_stack %>% 
-                             filter(set == "training") %>% 
-                             pull(.row) %>% 
-                             as.integer(),
-                           assessment = split_indices_df_stack %>% 
-                             filter(set == "test") %>% 
-                             pull(.row) %>% 
-                             as.integer())
+                              filter(set == "training") %>% 
+                              pull(.row) %>% 
+                              as.integer(),
+                            assessment = split_indices_df_stack %>% 
+                              filter(set == "test") %>% 
+                              pull(.row) %>% 
+                              as.integer())
 
 stack_data <- make_splits(split_indices_stack, 
                           to_stack %>% 
@@ -81,6 +81,7 @@ stack_workflow <- workflow() %>%
   add_recipe(stack_recipe) %>% 
   add_model(stack_specification)
 
+# 41 min
 tic_stack <- Sys.time()
 stack_tuning_results <- tune_grid(stack_workflow,
                                   resamples = stack_folds,
@@ -110,7 +111,7 @@ training_preds_vs_actuals_stack <- to_stack %>%
            predict(stack_training) %>% 
            pull(.pred))
 
-preds_vs_actuals_stack %>% 
+pred_plot_stack <- preds_vs_actuals_stack %>% 
   pivot_longer(c(actual, stack_pred))  %>% 
   filter(country %in% countries_to_predict) %>% 
   ggplot(aes(date, value, color = name)) +
@@ -135,20 +136,21 @@ importance_stack <- stack_model$fit$fit$fit %>%
        y = NULL) +
   theme_minimal()
 
-suppressMessages(
-  preds_vs_actuals_stack %>% 
-    inner_join(mean_predictions) %>% 
-    group_by(country) %>% 
-    summarise(stack_mape = median(abs(((actual) - stack_pred) / actual)),
-              mean_mape = median(abs(((actual) - mean_prediction) / actual))))
+preds_vs_actuals_stack %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    stack_mape = median(abs(((actual) - stack_pred) / actual)),
+    mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>% 
+  suppressMessages()
 
-suppressMessages(
-  preds_vs_actuals_stack %>% 
-    inner_join(mean_predictions) %>% 
-    group_by(country) %>% 
-    summarise(
-      stack_mape = median(abs(((actual) - stack_pred) / actual)),
-      mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
-    ungroup() %>% 
-    summarise_if(is.numeric, median)) %>% 
-    print()
+preds_vs_actuals_stack %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    stack_mape = median(abs(((actual) - stack_pred) / actual)),
+    mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
+  ungroup() %>% 
+  summarise_if(is.numeric, median) %>% 
+  suppressMessages() %>% 
+  print()

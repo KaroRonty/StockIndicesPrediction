@@ -37,6 +37,7 @@ rf_workflow <- workflow() %>%
   add_recipe(model_recipe) %>% 
   add_model(rf_specification)
 
+# 11.7 min
 tic_rf <- Sys.time()
 rf_tuning_results <- tune_grid(rf_workflow,
                                resamples = model_folds,
@@ -77,20 +78,21 @@ importance_rf <- rf_model %>%
   ggtitle("Random Forest") +
   theme_minimal()
 
-suppressMessages(
-  preds_vs_actuals %>% 
-    inner_join(mean_predictions) %>% 
-    group_by(country) %>% 
-    summarise(rf_mape = median(abs(((actual) - rf_pred) / actual)),
-              mean_mape = median(abs(((actual) - mean_prediction) / actual))))
+preds_vs_actuals %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    rf_mape = median(abs(((actual) - rf_pred) / actual)),
+    mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>% 
+  suppressMessages()
 
-suppressMessages(
-  preds_vs_actuals %>% 
-    inner_join(mean_predictions) %>% 
-    group_by(country) %>% 
-    summarise(
-      rf_mape = median(abs(((actual) - rf_pred) / actual)),
-      mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
-    ungroup() %>% 
-    summarise_if(is.numeric, median)) %>% 
-  print()
+preds_vs_actuals %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    rf_mape = median(abs(((actual) - rf_pred) / actual)),
+    mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
+  ungroup() %>% 
+  summarise_if(is.numeric, median) %>%
+  suppressMessages()
+print()

@@ -114,6 +114,7 @@ elastic_workflow <- workflow() %>%
   add_recipe(model_recipe_elastic) %>% 
   add_model(elastic_specification)
 
+# 29.7 min
 tic_elastic <- Sys.time()
 elastic_tuning_results <- tune_grid(elastic_workflow,
                                     resamples = model_folds_elastic,
@@ -136,7 +137,7 @@ training_preds_vs_actuals <- training_preds_vs_actuals %>%
            predict(model_training_elastic) %>% 
            pull(.pred))
 
-preds_vs_actuals %>% 
+pred_plot_elastic <- preds_vs_actuals %>% 
   pivot_longer(c(actual, elastic_pred)) %>% 
   filter(country %in% countries_to_predict) %>% 
   ggplot(aes(date, value, color = name)) +
@@ -154,20 +155,21 @@ importance_elastic <- elastic_model %>%
   ggtitle("Elastic Net") +
   theme_minimal()
 
-suppressMessages(
-  preds_vs_actuals %>% 
-    inner_join(mean_predictions) %>% 
-    group_by(country) %>% 
-    summarise(elastic_mape = median(abs(((actual) - elastic_pred) / actual)),
-              mean_mape = median(abs(((actual) - mean_prediction) / actual))))
+preds_vs_actuals %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    elastic_mape = median(abs(((actual) - elastic_pred) / actual)),
+    mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>% 
+  suppressMessages()
 
-suppressMessages(
-  preds_vs_actuals %>% 
-    inner_join(mean_predictions) %>% 
-    group_by(country) %>% 
-    summarise(
-      elastic_mape = median(abs(((actual) - elastic_pred) / actual)),
-      mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
-    ungroup() %>% 
-    summarise_if(is.numeric, median)) %>% 
+preds_vs_actuals %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    elastic_mape = median(abs(((actual) - elastic_pred) / actual)),
+    mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
+  ungroup() %>% 
+  summarise_if(is.numeric, median) %>% 
+  suppressMessages() %>% 
   print()

@@ -2,6 +2,8 @@ library(readxl)
 library(tsibble)
 library(tidyverse)
 
+tic_all <- Sys.time()
+
 source("setup.R")
 
 read_from_rds <- FALSE
@@ -27,6 +29,9 @@ if(exists("cl")){
   stopCluster(cl)
   rm(cl)
 }
+
+# 6.3 h
+(toc_all <- Sys.time() - tic_all)
 
 # 0.0584 MEAN
 # 0.0368 XGBoost

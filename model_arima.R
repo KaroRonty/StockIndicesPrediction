@@ -99,10 +99,11 @@ if(exists("cl")){
 cl <- makePSOCKcluster(parallel::detectCores(logical = TRUE))
 registerDoParallel(cl)
 
+# 27 sec
 tic_arima <- Sys.time()
 arima_model <- future_map(countries_to_predict,
                           ~model_arima(.x))
-(toc_arima <- Sys.time() - tic_arima)
+print(toc_arima <- Sys.time() - tic_arima)
 
 arima_fcast <- future_map(seq_len(length(arima_model)),
                           ~arima_model %>% 
@@ -135,11 +136,12 @@ arima_actual <- future_map(seq_len(length(arima_model)),
                              pull(cagr_n_year)) %>% 
   reduce(c)
 
-arima_training_to_plot <- future_map(seq_len(length(arima_model)),
-                                     ~arima_model %>% 
-                                       pluck(.x) %>% 
-                                       pluck(2) %>% 
-                                       select(country, date, cagr_n_year)) %>% 
+arima_training_to_plot <- future_map(
+  seq_len(length(arima_model)),
+  ~arima_model %>% 
+    pluck(.x) %>% 
+    pluck(2) %>% 
+    select(country, date, cagr_n_year)) %>% 
   reduce(bind_rows)
 
 arima_leakage_to_plot <- future_map(
@@ -158,11 +160,11 @@ arima_actual_to_plot <- future_map(
     select(country, date, cagr_n_year)) %>% 
   reduce(bind_rows)
 
-arima_fcast %>% 
+pred_plot_arima <- arima_fcast %>% 
   autoplot(color = "red") +
-  autolayer(arima_training_to_plot, color = "black") +
-  autolayer(arima_leakage_to_plot, color = "gray") +
-  autolayer(arima_actual_to_plot, color = "black") +
+  autolayer(arima_training_to_plot, cagr_n_year, color = "black") +
+  autolayer(arima_leakage_to_plot, cagr_n_year, color = "gray") +
+  autolayer(arima_actual_to_plot, cagr_n_year, color = "black") +
   facet_wrap(~country) +
   labs(title = "ARIMA",
        x = "Date",
@@ -182,7 +184,7 @@ suppressMessages(
   pred_vs_actual_arima %>% 
     inner_join(mean_predictions) %>% 
     group_by(country) %>% 
-    summarise(elastic_mape = median(abs(((actual) - arima_pred) / actual)),
+    summarise(arima_mape = median(abs(((actual) - arima_pred) / actual)),
               mean_mape = median(abs(((actual) - mean_prediction) / actual))))
 
 suppressMessages(
@@ -190,7 +192,7 @@ suppressMessages(
     inner_join(mean_predictions) %>% 
     group_by(country) %>% 
     summarise(
-      elastic_mape = median(abs(((actual) - arima_pred) / actual)),
+      arima_mape = median(abs(((actual) - arima_pred) / actual)),
       mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
     ungroup() %>% 
     summarise_if(is.numeric, median)) %>% 
