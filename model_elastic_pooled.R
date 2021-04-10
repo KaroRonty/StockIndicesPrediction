@@ -84,14 +84,14 @@ if(exists("cl")){
   rm(cl)
 }
 
-cl <- makePSOCKcluster(parallel::detectCores(logical = TRUE))
+cl <- makePSOCKcluster(parallel::detectCores())
 registerDoParallel(cl)
 
-set.seed(42)
+set.seed(1)
 elastic_grid <- grid_latin_hypercube(
   penalty(),
   mixture(),
-  size = 100) %>% # FIXME
+  size = 50) %>% 
   mutate_if(is.integer, as.numeric)
 
 # Hyperparameter ranges
@@ -116,6 +116,7 @@ elastic_workflow <- workflow() %>%
 
 # 29.7 min
 tic_elastic <- Sys.time()
+set.seed(1)
 elastic_tuning_results <- tune_grid(elastic_workflow,
                                     resamples = model_folds_elastic,
                                     grid = elastic_grid,
@@ -124,7 +125,8 @@ print(toc_elastic <- Sys.time() - tic_elastic)
 
 elastic_model <- elastic_workflow %>% 
   finalize_workflow(elastic_tuning_results %>% 
-                      select_by_one_std_err("mape", metric = "mape")) %>% 
+                      select_by_one_std_err(desc(penalty),
+                                            metric = "mape")) %>% 
   fit(model_training_elastic)
 
 preds_vs_actuals <- preds_vs_actuals %>% 
