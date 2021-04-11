@@ -45,6 +45,7 @@ plot_segmentation <- arima_fcast %>%
   
   
   labs(title = "Data Segmentation Process for U.K.",
+       subtitle = "Using CAGR as a target requires the implementation of a 5-year leakage set",
        x = "Year",
        y = "5-year CAGR",
        colour = "Data / Forecast") +
@@ -100,6 +101,24 @@ plot_segmentation +
              shape = 21,
              size = 3,
              stroke = 1) +
+  
+  # add geom label for initial (1)
+  geom_label(label = "(1)",
+             size = 3,
+             x = as.Date(yearmonth("2002 Aug")),
+             y = 1.03,
+             alpha = .2,
+             show.legend = F,
+             aes(colour = "Forecast")) +
+  
+  # add geom label for next step (2)
+  geom_label(label = "(2)",
+             size = 3,
+             x = as.Date(yearmonth("2007 Oct")),
+             y = 1.12,
+             alpha = .2,
+             show.legend = F,
+             aes(colour = "Forecast")) +
   
   # TODO: mb explain subtitle in the caption (and in cursive)
   labs(title = "Time Series Regression Model Training Process",
