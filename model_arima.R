@@ -240,8 +240,6 @@ resid_data %>%
   labs(title = "All countries show non white-noise typical residuals") +
   theme_bw()
 
-# train a single model
-
 # get PACF statistics
 acf_data <- map_dfr(1:8, ~arima_model %>% 
   pluck(.x) %>%
@@ -272,22 +270,3 @@ acf_data %>%
   labs(title = "PACF shows strong autocorrelation effect of previously predicted CAGR lag") +
   theme_bw()
 
-# get ACF statistics
-map(1:8, ~arima_model %>% 
-      pluck(.x) %>%
-      pluck(4) %>% 
-      feasts::ACF() %>%
-      autoplot() +
-      labs(title = paste("ACF for", countries_to_predict[.x])))
-
-
-
-future_map(seq_len(length(arima_model)),
-           ~arima_model %>% 
-             pluck(.x) %>% 
-             pluck(1) %>% 
-             pull(arima) %>%
-             pluck(1) %>%
-             .$fit %>%
-             .$est %>%
-             .$.fitted) %>%
