@@ -84,11 +84,11 @@ model_arima <- function(selected_country){
            paste("cagr_n_year", 
                  "~", 
                  paste0(!!predictors[predictors %in% features_selected],
-                        collapse = " + "),
+                        collapse = " + ")
                  # include differencing
-                 "+ PDQ(D = 1:5)")
+                 # "+ PDQ(D = 1:5)")
                  # + PDQ(D = 1:4)"
-                 ))),
+                 )))),
        training = model_training_arima,
        leakage = model_leakage_arima,
        test = model_test_arima)
@@ -243,13 +243,13 @@ resid_data %>%
 # get PACF statistics
 acf_data <- map_dfr(1:8, ~arima_model %>% 
   pluck(.x) %>%
-  pluck(4) %>% 
+  pluck(2) %>% 
   feasts::PACF() %>% 
   as_tibble()) %>% 
   left_join(
     map_dfr(1:8, ~arima_model %>% 
               pluck(.x) %>%
-              pluck(4) %>% 
+              pluck(2) %>% 
               feasts::ACF() %>% 
               as_tibble())
   )
