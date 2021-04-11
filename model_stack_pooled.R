@@ -4,7 +4,7 @@ if(exists("cl")){
   rm(cl)
 }
 
-cl <- makePSOCKcluster(parallel::detectCores(logical = TRUE))
+cl <- makePSOCKcluster(parallel::detectCores())
 registerDoParallel(cl)
 
 to_stack <- training_preds_vs_actuals %>% 
@@ -54,7 +54,7 @@ stack_recipe <- recipe(cagr_n_year ~
   step_center(all_predictors()) %>% 
   step_scale(all_predictors())
 
-set.seed(42)
+set.seed(1)
 stack_grid <- grid_latin_hypercube(
   penalty(),
   mixture(),
@@ -83,12 +83,14 @@ stack_workflow <- workflow() %>%
 
 # 41 min
 tic_stack <- Sys.time()
+set.seed(1)
 stack_tuning_results <- tune_grid(stack_workflow,
                                   resamples = stack_folds,
                                   grid = stack_grid,
                                   metrics = metric_set(rsq, mape, mae))
 print(toc_stack <- Sys.time() - tic_stack)
 
+set.seed(1)
 stack_model <- stack_workflow %>% 
   finalize_workflow(stack_tuning_results %>% 
                       select_by_one_std_err(desc(penalty),

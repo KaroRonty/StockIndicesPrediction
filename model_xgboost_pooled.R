@@ -4,19 +4,19 @@ if(exists("cl")){
   rm(cl)
 }
 
-cl <- makePSOCKcluster(parallel::detectCores(logical = TRUE))
+cl <- makePSOCKcluster(parallel::detectCores())
 registerDoParallel(cl)
 
-set.seed(42)
+set.seed(1)
 xgboost_grid <- grid_latin_hypercube(
   tree_depth(c(30, 70)), # c(15, 60)
-  trees(c(1000, 3500)),
-  learn_rate(), # c(0.001, 0.1)
-  finalize(mtry(), model_training),
+  trees(c(2000, 3500)),
+  learn_rate(c(0.03, 0.3), trans = NULL), # c(0.001, 0.1)
+  mtry(c(25, 47)),
   min_n(), # c(30, 70)
   loss_reduction(), # c(1e-5, 1e-10)
   sample_size = finalize(sample_prop(), model_training),
-  size = 200) %>% 
+  size = 100) %>% 
   mutate_if(is.integer, as.numeric)
 
 # Hyperparameter ranges
@@ -46,15 +46,17 @@ xgboost_workflow <- workflow() %>%
 
 # 4.8 h
 tic_xgboost <- Sys.time()
+set.seed(1)
 xgboost_tuning_results <- tune_grid(xgboost_workflow,
                                     resamples = model_folds,
                                     grid = xgboost_grid,
                                     metrics = metric_set(rsq, mape, mae))
 print(toc_xgboost <- Sys.time() - tic_xgboost)
 
+set.seed(1)
 xgboost_model <- xgboost_workflow %>% 
   finalize_workflow(xgboost_tuning_results %>% 
-                      select_by_one_std_err("mape", metric = "mape")) %>% 
+                      select_best(metric = "mape")) %>% 
   fit(model_training)
 
 preds_vs_actuals <- preds_vs_actuals %>% 

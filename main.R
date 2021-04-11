@@ -30,13 +30,16 @@ if(exists("cl")){
   rm(cl)
 }
 
-# 6.3 h
+# 8.7 h
 (toc_all <- Sys.time() - tic_all)
 
-# 0.0584 MEAN
-# 0.0368 XGBoost
-# 0.0245 Random Forest
-# 0.0234 Elastic net
-# 0.0258 Stack
-# 0.0320 Ensemble median
-# 0.0316 Ensemble mean
+#   MAPE |  Min | Model
+# 0.0584 |   NA | MEAN
+# ------------------------------
+# 0.0360 | 430  | XGBoost
+# 0.0280 | 13.3 | Random Forest
+# 0.0284 | 24.4 | Elastic net
+# 0.0816 |  0.3 | ARIMA
+# 0.0301 | 47.5 | Stack
+# 0.0368 |   NA | Ensemble mean
+# 0.0296 |   NA | Ensemble median

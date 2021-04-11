@@ -96,7 +96,7 @@ if(exists("cl")){
   rm(cl)
 }
 
-cl <- makePSOCKcluster(parallel::detectCores(logical = TRUE))
+cl <- makePSOCKcluster(parallel::detectCores())
 registerDoParallel(cl)
 
 # 27 sec

@@ -4,12 +4,13 @@ if(exists("cl")){
   rm(cl)
 }
 
-cl <- makePSOCKcluster(parallel::detectCores(logical = TRUE))
+cl <- makePSOCKcluster(parallel::detectCores())
 registerDoParallel(cl)
 
-set.seed(42)
+set.seed(1)
 rf_grid <- grid_latin_hypercube(
-  trees(c(100, 500)),
+  trees(c(100, 1000)),
+  finalize(mtry(), model_training),
   min_n(c(2, 5)),
   size = 25) %>% 
   mutate_if(is.integer, as.numeric)
@@ -26,9 +27,9 @@ rf_grid %>%
   arrange(hyperparameter)
 
 rf_specification <- rand_forest(mode = "regression",
-                                mtry = 46,
-                                trees = tune(), # 380
-                                min_n = tune()) %>% # 2
+                                mtry = tune(),
+                                trees = tune(),
+                                min_n = tune()) %>% 
   set_engine("ranger", 
              importance = "impurity", 
              num.threads = 12)
@@ -39,15 +40,17 @@ rf_workflow <- workflow() %>%
 
 # 11.7 min
 tic_rf <- Sys.time()
+set.seed(1)
 rf_tuning_results <- tune_grid(rf_workflow,
                                resamples = model_folds,
                                grid = rf_grid,
                                metrics = metric_set(rsq, mape, mae))
 print(toc_rf <- Sys.time() - tic_rf)
 
+set.seed(1)
 rf_model <- rf_workflow %>% 
   finalize_workflow(rf_tuning_results %>% 
-                      select_by_one_std_err("mape", metric = "mape")) %>% 
+                      select_best(metric = "mape")) %>% 
   fit(model_training)
 
 preds_vs_actuals <- preds_vs_actuals %>% 
@@ -94,5 +97,5 @@ preds_vs_actuals %>%
     mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
   ungroup() %>% 
   summarise_if(is.numeric, median) %>%
-  suppressMessages()
-print()
+  suppressMessages() %>% 
+  print()
