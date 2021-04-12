@@ -240,12 +240,11 @@ resid_data %>%
   labs(title = "All countries show non white-noise typical residuals") +
   theme_bw()
 
-# get PACF statistics
 acf_data <- map_dfr(1:8, ~arima_model %>% 
-  pluck(.x) %>%
-  pluck(2) %>% 
-  feasts::PACF() %>% 
-  as_tibble()) %>% 
+                      pluck(.x) %>%
+                      pluck(2) %>% 
+                      feasts::PACF() %>% 
+                      as_tibble()) %>% 
   left_join(
     map_dfr(1:8, ~arima_model %>% 
               pluck(.x) %>%

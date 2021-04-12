@@ -120,7 +120,7 @@ set.seed(1)
 elastic_tuning_results <- tune_grid(elastic_workflow,
                                     resamples = model_folds_elastic,
                                     grid = elastic_grid,
-                                    metrics = metric_set(rsq, mape, mae))
+                                    metrics = metric_set(rsq, mape, mae, rmse))
 print(toc_elastic <- Sys.time() - tic_elastic)
 
 elastic_model <- elastic_workflow %>% 
@@ -161,9 +161,10 @@ preds_vs_actuals %>%
   inner_join(mean_predictions) %>% 
   group_by(country) %>% 
   summarise(
-    elastic_mape = median(abs(((actual) - elastic_pred) / actual)),
+    en_pool_mape = median(abs(((actual) - elastic_pred) / actual)),
     mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>% 
   suppressMessages()
+
 
 preds_vs_actuals %>% 
   inner_join(mean_predictions) %>% 
@@ -175,3 +176,29 @@ preds_vs_actuals %>%
   summarise_if(is.numeric, median) %>% 
   suppressMessages() %>% 
   print()
+
+# form of results for tables
+acc_pool_en <- preds_vs_actuals %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    MAPE = median(abs(((actual) - elastic_pred) / actual)),
+    MAE = mean(abs(actual - elastic_pred)),
+    RMSE = sqrt(sum((elastic_pred - actual)^2) / 121)) %>%  # FIXME
+  mutate(model = "en_pool") %>%
+  pivot_longer(cols = c(MAPE, MAE, RMSE),
+               names_to = "errors",
+               values_to = "value") %>% 
+  suppressMessages()
+
+acc_pool_mean <- preds_vs_actuals %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    MAPE = median(abs(((actual) - mean_prediction) / actual)),
+    MAE = mean(abs(actual - mean_prediction)), 
+    RMSE = sqrt(sum((mean_prediction - actual)^2) / 121)) %>% 
+  mutate(model = "mean") %>%  # FIXME
+  pivot_longer(cols = c(MAPE, MAE, RMSE),
+             names_to = "errors",
+             values_to = "value") 
