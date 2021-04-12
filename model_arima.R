@@ -84,11 +84,11 @@ model_arima <- function(selected_country){
            paste("cagr_n_year", 
                  "~", 
                  paste0(!!predictors[predictors %in% features_selected],
-                        collapse = " + ")
+                        collapse = " + "),
                  # include differencing
-                 # "+ PDQ(D = 1:5)")
+                 "+ pdq(d = 1:5)")
                  # + PDQ(D = 1:4)"
-                 )))),
+                 ))),
        training = model_training_arima,
        leakage = model_leakage_arima,
        test = model_test_arima)
@@ -203,6 +203,20 @@ suppressMessages(
     summarise_if(is.numeric, median)) %>% 
   print()
 
+# form of results for tables 
+acc_single_arima <- preds_vs_actuals %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    MAPE = median(abs(((actual) - arima_pred) / actual)),
+    MAE = mean(abs(actual - arima_pred)),
+    RMSE = sqrt(sum((arima_pred - actual)^2) / 121)) %>%  # FIXME
+  mutate(model = "arima_single") %>% 
+  pivot_longer(cols = c(MAPE, MAE, RMSE),
+               names_to = "errors",
+               values_to = "value") %>% 
+  suppressMessages()
+
 
 # VALIDATION -----
 
@@ -268,4 +282,27 @@ acf_data %>%
   facet_wrap(~country) +
   labs(title = "PACF shows strong autocorrelation effect of previously predicted CAGR lag") +
   theme_bw()
+
+# significance of params
+sig_arima_auto <- map_dfr(1:8, ~arima_model[[.x]] %>% 
+  .$model %>% 
+  .$arima %>% 
+  pluck(1) %>% 
+  .$fit %>% 
+  .$par %>% 
+  mutate(country = arima_model[[.x]] %>% 
+           .$model %>% 
+           .$country))
+
+sig_arima_auto %>% 
+  filter(term %in% c("ar1", "ar2", "sar1", "sar2", "ma1", "sma1")) %>% 
+  ggplot(aes(country, p.value)) +
+  geom_col() +
+  coord_cartesian(ylim = c(0,0.05)) +
+  facet_wrap(~term, scales = "free") +
+  labs(title = "Significance Analysis of d = 1 forced auto.ARIMA models",
+       subtitle = "Coefficients are less significant but also overall less prevalent because of the differencing") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
 
