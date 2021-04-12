@@ -91,7 +91,7 @@ preds_vs_actuals %>%
   inner_join(mean_predictions) %>% 
   group_by(country) %>% 
   summarise(
-    xgb_mape = median(abs(((actual) - xgboost_pred) / actual)),
+    xgb_pool_mape = median(abs(((actual) - xgboost_pred) / actual)),
     mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>% 
   suppressMessages()
 
@@ -105,3 +105,18 @@ preds_vs_actuals %>%
   summarise_if(is.numeric, median) %>% 
   suppressMessages() %>% 
   print()
+
+
+# form of results for tables
+acc_pool_xgb <- preds_vs_actuals %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    MAPE = median(abs(((actual) - xgboost_pred) / actual)),
+    MAE = mean(abs(actual - xgboost_pred)),
+    RMSE = sqrt(sum((xgboost_pred - actual)^2) / 121)) %>%  # FIXME
+  mutate(model = "xgb_pool") %>% 
+  pivot_longer(cols = c(MAPE, MAE, RMSE),
+               names_to = "errors",
+               values_to = "value") %>% 
+  suppressMessages()
