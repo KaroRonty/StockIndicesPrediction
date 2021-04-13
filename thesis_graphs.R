@@ -185,4 +185,24 @@ to_model_exploration %>%
   theme(legend.position = "bottom", legend.box = "horizontal") +
   guides(colour = guide_legend(nrow = 1))
 
+# GRAPH CONTAINING ALL FORECASTS PER COUNTRY 
+
+preds_vs_actuals %>% 
+  filter(country %in% countries_to_predict) %>% 
+  pivot_longer(cols = c("actual", "xgboost_pred", "rf_pred", "elastic_pred","var_pred", "arima_pred"),
+               names_to = "models",
+               values_to = "cagr") %>% 
+  ggplot(aes(date, cagr, colour = models)) +
+  geom_line(aes(linetype = models)) +
+  facet_wrap(~country) +
+  theme_bw() +
+  theme(legend.position = "bottom", legend.box = "horizontal",
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  guides(colour = guide_legend(nrow = 2))
+
+# GRAPH CORRELATION BETWEEN FORECASTS
+preds_vs_actuals %>% 
+  filter(country %in% countries_to_predict) %>% 
+  GGally::ggpairs(columns = 3:8)
+
 
