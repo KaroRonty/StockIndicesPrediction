@@ -4,7 +4,8 @@ acc_pool_en %>%
   bind_rows(acc_pool_xgb) %>% 
   bind_rows(acc_pool_rf) %>% 
   bind_rows(acc_single_arima) %>% 
-  bind_rows(acc_pool_mean) %>% 
+  bind_rows(acc_single_var) %>% 
+  bind_rows(acc_pool_mean) %>%
   arrange(country) %>% 
   pivot_wider(names_from = model,
               values_from = value)
@@ -15,6 +16,7 @@ acc_pool_en %>%
   bind_rows(acc_pool_xgb) %>% 
   bind_rows(acc_pool_rf) %>% 
   bind_rows(acc_single_arima) %>%
+  bind_rows(acc_single_var) %>% 
   bind_rows(acc_pool_mean) %>% 
   arrange(country) %>% 
   pivot_wider(names_from = model,
@@ -30,11 +32,12 @@ acc_pool_en %>%
   bind_rows(acc_pool_xgb) %>% 
   bind_rows(acc_pool_rf) %>% 
   bind_rows(acc_single_arima) %>%
+  bind_rows(acc_single_var) %>% 
   bind_rows(acc_pool_mean) %>% 
   arrange(country) %>% 
   pivot_wider(names_from = model,
               values_from = value) %>% 
-  pivot_longer(cols = c("en_pool", "rf_pool", "xgb_pool", "arima_single"),
+  pivot_longer(cols = c("en_pool", "rf_pool", "xgb_pool", "var_single", "arima_single"),
                names_to = "base_models",
                values_to = "value") %>% 
   ungroup() %>% 
@@ -48,11 +51,12 @@ acc_pool_en %>%
   bind_rows(acc_pool_xgb) %>% 
   bind_rows(acc_pool_rf) %>% 
   bind_rows(acc_single_arima) %>%
+  bind_rows(acc_single_var) %>% 
   bind_rows(acc_pool_mean) %>% 
   arrange(country) %>% 
   pivot_wider(names_from = model,
               values_from = value) %>% 
-  pivot_longer(cols = c("en_pool", "rf_pool", "xgb_pool", "arima_single"),
+  pivot_longer(cols = c("en_pool", "rf_pool", "xgb_pool", "var_single", "arima_single"),
                names_to = "base_models",
                values_to = "value") %>% 
   ungroup() %>% 
