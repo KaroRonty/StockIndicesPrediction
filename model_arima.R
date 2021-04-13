@@ -185,6 +185,10 @@ pred_vs_actual_arima <- arima_actual_to_plot %>%
                select(date, country, arima_pred = .mean)) %>% 
   suppressMessages()
 
+preds_vs_actuals %>% 
+  left_join(pred_vs_actual_arima)
+  
+
 suppressMessages(
   pred_vs_actual_arima %>% 
     inner_join(mean_predictions) %>% 
