@@ -37,13 +37,18 @@ to_model_var <- model_recipe_var %>%
          country = to_model_mm$country,
          .before = 1)
 
+# errors to big if all features are  differenced
+to_model_var_diff <- to_model_var %>% 
+  mutate(cagr_n_year = difference(cagr_n_year))
+         
+
 # manual set up to prevent name conflicts
 predictors_var <- c("cagr_n_year", "cape", "dividend_yield", "rate_10_year", 
                     "s_rate_10_year", "cpi")
 
 model_var <- function(selected_country){
   
-  model_data_var <- to_model_var %>% 
+  model_data_var <- to_model_var_diff %>% 
     as_tibble() %>% 
     filter(country == selected_country) %>% 
     mutate(set = case_when(date < yearmonth(leakage_start_date) ~ "training",
@@ -108,11 +113,13 @@ if(exists("cl")){
 cl <- makePSOCKcluster(parallel::detectCores())
 registerDoParallel(cl)
 
-# 27 sec
+# 1 sec
 tic_var <- Sys.time()
 var_model <- future_map(countries_to_predict,
                           ~model_var(.x))
 print(toc_var <- Sys.time() - tic_var)
+
+
 
 # FIXME: something with length of names
 var_fcast <- future_map(seq_len(length(var_model)),
@@ -121,8 +128,37 @@ var_fcast <- future_map(seq_len(length(var_model)),
                             pluck(1) %>% 
                             forecast(var_model %>% 
                                        pluck(.x) %>% 
-                                       pluck(4))) %>% 
+                                       pluck(4) %>% 
+                                       select(-cagr_n_year))) %>% 
   reduce(bind_rows)
+
+
+backtransform_var <- function(bb){
+  var_fcast %>% 
+    filter(.model == "var",
+           country == bb) %>% 
+    pull(.mean_cagr_n_year) %>% 
+    na.omit() %>% 
+    as.vector() %>% 
+    diffinv(lag = 1, 
+            xi = to_model_var %>% filter(date < yearmonth(leakage_start_date) | # FIXME 
+                                           date >= yearmonth(leakage_start_date)) %>% 
+                                filter(country == bb) %>% 
+                                select(cagr_n_year) %>% 
+              na.omit() %>% 
+              tail(n = 1)
+            ) %>% 
+    as_tibble() %>% 
+    mutate(cagr_n_year = value,
+           country = bb) %>% 
+    select(-value) %>% 
+    slice(-1)
+}
+
+var_fcast_bt <- map(countries_to_predict, 
+                        ~backtransform_var(.x)) %>% 
+  reduce(bind_rows)
+
 
 var_fitted <- future_map(seq_len(length(var_model)),
                            ~var_model %>% 
@@ -179,17 +215,17 @@ pred_plot_var <- var_fcast %>%
   autolayer(var_actual_to_plot, cagr_n_year, color = "black") +
   facet_wrap(~country)
 
-  autoplot(color = "red") +
-  autolayer(var_training_to_plot, cagr_n_year, color = "black") +
-  autolayer(var_leakage_to_plot, cagr_n_year, color = "gray") +
-  autolayer(var_actual_to_plot, cagr_n_year, color = "black") +
-  facet_wrap(~country) +
-  coord_cartesian(ylim = c(0.75,1.5)) +
-  labs(title = "var",
-       x = "Date",
-       y = cagr_name) +
-  theme_minimal() +
-  theme(legend.position = "none")
+  # autoplot(color = "red") +
+  # autolayer(var_training_to_plot, cagr_n_year, color = "black") +
+  # autolayer(var_leakage_to_plot, cagr_n_year, color = "gray") +
+  # autolayer(var_actual_to_plot, cagr_n_year, color = "black") +
+  # facet_wrap(~country) +
+  # coord_cartesian(ylim = c(0.75,1.5)) +
+  # labs(title = "var",
+  #      x = "Date",
+  #      y = cagr_name) +
+  # theme_minimal() +
+  # theme(legend.position = "none")
 
   
 
@@ -218,6 +254,9 @@ suppressMessages(
     ungroup() %>% 
     summarise_if(is.numeric, median)) %>% 
   print()
+
+preds_vs_actuals <- preds_vs_actuals %>% 
+  left_join(pred_vs_actual_var)
 
 # form of results for tables 
 acc_single_var <- preds_vs_actuals %>% 

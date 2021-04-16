@@ -83,6 +83,7 @@ preds_vs_actuals_ensemble %>%
       median(abs(((actual) - ensemble_median_pred) / actual)),
     mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>% 
   ungroup() %>% 
-  summarise_if(is.numeric, median) %>% 
+  summarise_if(is.numeric, mean) %>% 
   suppressMessages() %>% 
   print()
+

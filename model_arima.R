@@ -185,7 +185,7 @@ pred_vs_actual_arima <- arima_actual_to_plot %>%
                select(date, country, arima_pred = .mean)) %>% 
   suppressMessages()
 
-preds_vs_actuals %>% 
+preds_vs_actuals <- preds_vs_actuals %>% 
   left_join(pred_vs_actual_arima)
   
 
@@ -206,20 +206,6 @@ suppressMessages(
     ungroup() %>% 
     summarise_if(is.numeric, median)) %>% 
   print()
-
-# form of results for tables 
-acc_single_arima <- preds_vs_actuals %>% 
-  inner_join(mean_predictions) %>% 
-  group_by(country) %>% 
-  summarise(
-    MAPE = median(abs(((actual) - arima_pred) / actual)),
-    MAE = mean(abs(actual - arima_pred)),
-    RMSE = sqrt(sum((arima_pred - actual)^2) / 121)) %>%  # FIXME
-  mutate(model = "arima_single") %>% 
-  pivot_longer(cols = c(MAPE, MAE, RMSE),
-               names_to = "errors",
-               values_to = "value") %>% 
-  suppressMessages()
 
 
 # VALIDATION -----
