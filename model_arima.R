@@ -36,6 +36,23 @@ to_model_arima <- model_recipe_arima %>%
          country = to_model_mm$country,
          .before = 1)
 
+# stationarity analysis
+cp <- crossing(countries_to_predict, predictors)
+
+diffs <- map(1:nrow(cp), ~to_model_arima %>% 
+      filter(country == paste0(cp[.x, 1])) %>% 
+      select(paste0(cp[.x, 2])) %>%
+      as.matrix() %>% 
+      forecast::ndiffs(test = c("kpss")) %>% 
+      tibble(d = .,
+             Country = paste(cp[.x, 1]),
+             Predictor = paste(cp[.x, 2]))) %>% 
+      reduce(bind_rows)
+
+
+      
+      
+
 model_arima <- function(selected_country){
   
   model_data_arima <- to_model_arima %>% 
