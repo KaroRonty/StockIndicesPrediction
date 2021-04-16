@@ -1,22 +1,9 @@
 library(corrr)
 library(dplyr)
+library(multDM)
 library(tsibble)
 library(ggplot2)
 library(ggforce)
-
-# PRESELECT FORECAST FOR PLOTTING (from modelling.R, fcasts)
-
-plot_country <- "USA"
-cols <- c("Predicted" = "gray10",
-          "Original" = "gray50")
-
-to_fcast_graph <- fcasts %>% 
-  filter(country == plot_country,
-         source == "cagr_5_year",
-         .model == "ARIMA") %>% 
-  select(date, .mean) %>% 
-  mutate(cagr_5_year = .mean) %>% 
-  select(-.mean)
 
 # GRAPH: TIME-SERIES TRAINING PROCESS
 
@@ -51,9 +38,9 @@ plot_segmentation <- arima_fcast %>%
        colour = "Data / Forecast") +
   coord_cartesian(ylim = c(0.85, 1.3)) +
   scale_color_manual(values = c("Forecast" = "#00BFC4", 
-                                "Training" = "#F8766D",
+                                "Training" = "black",
                                 "Leakage" = "gray", 
-                                "Actual" = "#F8766D")) +
+                                "Actual" = "black")) +
   
   theme_bw() +
   theme(legend.position = "bottom", legend.box = "horizontal") +
@@ -130,9 +117,9 @@ plot_segmentation +
   
   # TODO: mb in 1 row (the whole Legend)
   scale_color_manual(values = c("Forecast" = "#00BFC4", 
-                                "Training" = "#F8766D",
+                                "Training" = "black",
                                 "Leakage" = "gray", 
-                                "Actual" = "#F8766D")) +
+                                "Actual" = "black")) +
   scale_fill_manual(values = c("Prediction" = "#00BFC4",
                                "Lag" = "#F8766D")) +
   theme_bw() +
@@ -185,24 +172,109 @@ to_model_exploration %>%
   theme(legend.position = "bottom", legend.box = "horizontal") +
   guides(colour = guide_legend(nrow = 1))
 
-# GRAPH CONTAINING ALL FORECASTS PER COUNTRY 
+# GRAPH CONTAINING ALL BASE FORECASTS PER COUNTRY 
 
 preds_vs_actuals %>% 
   filter(country %in% countries_to_predict) %>% 
-  pivot_longer(cols = c("actual", "xgboost_pred", "rf_pred", "elastic_pred","var_pred", "arima_pred"),
+  pivot_longer(cols = c("actual", "xgboost_pred", "rf_pred", "elastic_pred", "arima_pred"),
                names_to = "models",
                values_to = "cagr") %>% 
   ggplot(aes(date, cagr, colour = models)) +
-  geom_line(aes(linetype = models)) +
+  geom_line() +
+  geom_hline(yintercept = 1, colour = "red", linetype = "dashed") + 
   facet_wrap(~country) +
-  theme_bw() +
+  labs(title = "Prediction Comparison among base-models",
+       subtitle = "Machine Learning models using pooling show the best fit, while ARIMA tends to over- or underestimate",
+       colour = "Base Models",
+       x = "Year",
+       y = "5-Year CAGR") +
+    # RColorBrewer::brewer.pal(n = 8, name = 'Dark2')
+  scale_color_manual(values = c("actual" = "black", 
+                                "xgboost_pred" = "#1B9E77", # dark turq
+                                "rf_pred" = "#D95F02", # orange brown
+                                "elastic_pred" = "#E7298A", # magenta
+                                "arima_pred" = "#7570B3")) + # dark violett
+    theme_bw() +
   theme(legend.position = "bottom", legend.box = "horizontal",
         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
   guides(colour = guide_legend(nrow = 2))
 
-# GRAPH CORRELATION BETWEEN FORECASTS
+# GRAPH CORRELATION BETWEEN BASE FORECASTS
 preds_vs_actuals %>% 
   filter(country %in% countries_to_predict) %>% 
-  GGally::ggpairs(columns = 3:8)
+  GGally::ggpairs(columns = 3:7)
 
 
+# STACKED AND ENSEMBLE FORECASTS
+preds_vs_actuals_ensemble %>% 
+  left_join(preds_vs_actuals_stack %>% select(date, country, stack_pred)) %>% 
+  select(date, country, actual, ensemble_mean_pred, ensemble_median_pred, stack_pred) %>% 
+  pivot_longer(cols = c("actual", "ensemble_mean_pred", "ensemble_median_pred", "stack_pred"),
+               names_to = "model",
+               values_to = "pred") %>% 
+  ggplot(aes(date, pred, colour = model)) +
+  geom_line() +
+  facet_wrap(~country) +
+  scale_color_manual(values = c("actual" = "black", 
+                                "ensemble_mean_pred" = "#1B9E77", # dark turq
+                                "ensemble_median_pred" = "#E7298A", # magenta
+                                "stack_pred" = "#D95F02")) + # dark violett
+  theme_bw() +
+  theme(legend.position = "bottom", legend.box = "horizontal",
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  guides(colour = guide_legend(nrow = 1))
+
+
+# GRAPH CORRELATION BETWEEN ENSEMBLE AND STACKED FORECASTS 
+preds_vs_actuals_ensemble %>% 
+  left_join(preds_vs_actuals_stack %>% select(date, country, stack_pred)) %>% 
+  select(date, country, actual, ensemble_mean_pred, ensemble_median_pred, stack_pred) %>%
+  filter(country %in% countries_to_predict) %>% 
+  GGally::ggpairs(columns = 3:6)
+
+# SIGNAL-TO-NOISE RATIO ANALYSIS
+
+# statistically significant difference between models in terms of forecast accuracy
+
+# vector for model combinations
+base_models <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_pred", "mean_pred")
+base_models2 <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_pred", "mean_pred")
+horizons <- c(1,6,12,24,36,48,60,90,120)
+
+mc <- crossing(countries_to_predict, base_models, base_models2, horizons)
+
+# FIXME: strange, even same models with same forecasts are not significantly different from each other
+dm_test <- 
+map(1:nrow(mc), ~preds_vs_actuals %>%
+      filter(country %in% countries_to_predict) %>% 
+      filter(country == paste0(mc[.x,1])) %>%
+      mutate(period = row_number()) %>% # period number necessary for DM.test function
+      select(period, actual, xgboost_pred, rf_pred, elastic_pred, arima_pred, mean_pred) %>% 
+      select(period, actual, paste(mc[.x,2]), paste(mc[.x,3])) %>%
+      as.matrix() %>%  
+      DM.test(pluck(3), 
+              pluck(4), 
+              pluck(2), 
+              # ASE for absolute scaled error 
+              loss.type = "SE", h = mc[.x, 4] %>% as.integer(), H1 = "same") %>% pluck(4) %>% 
+      tibble(p.value = .,
+             Country = paste(mc[.x, 1]),
+             Model = paste(mc[.x, 2]),
+             CompModel = paste(mc[.x, 3]),
+             h = mc[.x,4] %>% as.integer())) %>% 
+      reduce(bind_rows)
+
+
+# I assume that the signal to noise ratio, e.g., measured by 
+# 1 minus the variance of forecast errors divided by the variance of the returns, 
+# is very small, whichever model you use.
+
+
+signal_to_noise <- preds_vs_actuals %>% 
+  filter(country %in% countries_to_predict) %>% 
+  group_by(country) %>% 
+  summarise(stn_xgboost = 1 - (var(actual - xgboost_pred) / var(actual)),
+            stn_rf = 1 - (var(actual - rf_pred) / var(actual)),
+            stn_en = 1 - (var(actual - elastic_pred) / var(actual)),
+            stn_arima = 1 - (var(actual - arima_pred) / var(actual)),
+            stn_mean = 1 - (var(actual - mean_pred) / var(actual))) 
