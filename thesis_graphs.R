@@ -172,6 +172,91 @@ to_model_exploration %>%
   theme(legend.position = "bottom", legend.box = "horizontal") +
   guides(colour = guide_legend(nrow = 1))
 
+# EDA HYPOTHESIS
+
+# 1.) more normal disribution the longer the return horizon
+# 2.) better properties of cagr vs. normal returns (based on mean, variance, distribution)
+
+
+
+# EDA: DISTRIBUTION OF CAGR VS. DISTRIBUTION OF RETURNS
+
+
+# create returns for different leads
+add_return <- function(df, lead){
+  col_name <- paste0("return_", lead, "_year")
+  
+  df %>% 
+    mutate(!!col_name := (lead(price, 12 * lead) / price))
+}
+
+return_years <- seq(1:5)
+
+prices_local_long <- suppressMessages(
+  map(return_years,
+      ~add_return(prices_local_long, .x)) %>% 
+    reduce(inner_join))
+
+plot_cagr_distribution <-  prices_local_long %>% 
+  filter(date < leakage_start_date, 
+         country %in% countries_to_predict) %>% 
+  select(date, country, cagr_5_year, cagr_1_year) %>% 
+  pivot_longer(cols = 3:4,
+               names_to = "trans",
+               values_to = "value") %>% 
+  ggplot(aes(value, fill = trans)) +
+  geom_histogram(bins = 60, alpha = .6, position = "identity") +
+  facet_wrap(~country, nrow = 2) +
+  labs(x = "CAGR",
+       y = "Density",
+       title = "CAGR Distribution Across Countries and Leads") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+plot_return_distribution <- prices_local_long %>% 
+  filter(date < leakage_start_date, 
+         country %in% countries_to_predict) %>% 
+  select(date, country, return_5_year, return_1_year) %>% 
+  pivot_longer(cols = 3:4,
+               names_to = "trans",
+               values_to = "value") %>% 
+  ggplot(aes(value, fill = trans)) +
+  geom_histogram(bins = 60, alpha = .6, position = "identity") +
+  facet_wrap(~country, nrow = 2) +
+  labs(x = "Return",
+       y = "Density",
+       title = "Return Distribution Across Countries and Leads") +
+  scale_fill_manual(values = trans,
+                    labels = c("1year", "5years")) + #FIXME to 1 and 5 years in legend
+  theme_bw() +
+  theme(legend.position = "bottom", legend.box = "horizontal")
+
+plot_cagr_distribution / plot_return_distribution
+
+
+# -----
+
+prices_local_long %>% 
+  filter(date < leakage_start_date, 
+         country %in% countries_to_predict) %>% 
+  select(country, cagr_5_year) %>% 
+  ggplot(aes(cagr_5_year)) +
+  geom_histogram(aes(y = ..density..), bins = 40, fill = "gray60") +
+  geom_density(size = 0.8) +
+  facet_wrap(~country) +
+  labs(x = "CAGR",
+       y = "Density",
+       title = "CAGR Distribution",
+       subtitle = "..") +
+  theme_bw() +
+  theme(legend.position = "bottom", legend.box = "horizontal") +
+  guides(colour = guide_legend(nrow = 1))
+
+
+
+  
+  
+
 # GRAPH CONTAINING ALL BASE FORECASTS PER COUNTRY 
 
 preds_vs_actuals %>% 
@@ -215,6 +300,7 @@ preds_vs_actuals_ensemble %>%
   ggplot(aes(date, pred, colour = model)) +
   geom_line() +
   facet_wrap(~country) +
+  scale_x_yearquarter() +
   scale_color_manual(values = c("actual" = "black", 
                                 "ensemble_mean_pred" = "#1B9E77", # dark turq
                                 "ensemble_median_pred" = "#E7298A", # magenta
@@ -256,7 +342,7 @@ map(1:nrow(mc), ~preds_vs_actuals %>%
               pluck(4), 
               pluck(2), 
               # ASE for absolute scaled error 
-              loss.type = "SE", h = mc[.x, 4] %>% as.integer(), H1 = "same") %>% pluck(4) %>% 
+              loss.type = "SE", h = mc[.x, 4] %>% as.integer(), H1 = "more") %>% pluck(4) %>% 
       tibble(p.value = .,
              Country = paste(mc[.x, 1]),
              Model = paste(mc[.x, 2]),
