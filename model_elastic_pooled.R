@@ -177,28 +177,4 @@ preds_vs_actuals %>%
   suppressMessages() %>% 
   print()
 
-# form of results for tables
-acc_pool_en <- preds_vs_actuals %>% 
-  inner_join(mean_predictions) %>% 
-  group_by(country) %>% 
-  summarise(
-    MAPE = median(abs(((actual) - elastic_pred) / actual)),
-    MAE = mean(abs(actual - elastic_pred)),
-    RMSE = sqrt(sum((elastic_pred - actual)^2) / 121)) %>%  # FIXME
-  mutate(model = "en_pool") %>%
-  pivot_longer(cols = c(MAPE, MAE, RMSE),
-               names_to = "errors",
-               values_to = "value") %>% 
-  suppressMessages()
 
-acc_pool_mean <- preds_vs_actuals %>% 
-  inner_join(mean_predictions) %>% 
-  group_by(country) %>% 
-  summarise(
-    MAPE = median(abs(((actual) - mean_prediction) / actual)),
-    MAE = mean(abs(actual - mean_prediction)), 
-    RMSE = sqrt(sum((mean_prediction - actual)^2) / 121)) %>% 
-  mutate(model = "mean") %>%  # FIXME
-  pivot_longer(cols = c(MAPE, MAE, RMSE),
-             names_to = "errors",
-             values_to = "value") 
