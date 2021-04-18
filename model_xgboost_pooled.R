@@ -75,13 +75,14 @@ pred_plot_xgboost <- preds_vs_actuals %>%
   ggplot(aes(date, value, color = name)) +
   geom_line() + 
   facet_wrap(~country) +
+  scale_color_manual(values = c("black", "#00BFC4")) +
   ggtitle("XGBoost") +
   xlab("Date") +
   ylab(cagr_name) +
   theme_minimal() +
   theme(legend.position = "none")
 
-importance_xgboost <- xgboost_model %>% 
+importance_plot_xgboost <- xgboost_model %>% 
   pull_workflow_fit() %>% 
   vip() +
   ggtitle("XGBoost") +
@@ -105,5 +106,3 @@ preds_vs_actuals %>%
   summarise_if(is.numeric, median) %>% 
   suppressMessages() %>% 
   print()
-
-

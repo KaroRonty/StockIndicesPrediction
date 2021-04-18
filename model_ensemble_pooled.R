@@ -33,6 +33,7 @@ pred_plot_ensemble_mean <- preds_vs_actuals_ensemble %>%
   ggplot(aes(date, value, color = name)) +
   geom_line() + 
   facet_wrap(~country) +
+  scale_color_manual(values = c("black", "#00BFC4")) +
   ggtitle("Ensemble model (mean)") +
   xlab("Date") +
   ylab(cagr_name) +
@@ -51,11 +52,11 @@ pred_plot_ensemble_median <- preds_vs_actuals_ensemble %>%
   theme_minimal() +
   theme(legend.position = "none")
 
-importance_ensemble <- tibble(feature = c("xgboost", 
-                                          "rf", 
-                                          "elastic", 
-                                          "arima"),
-                              Importance = rep(1/4, 4)) %>% 
+importance_plot_ensemble <- tibble(feature = c("xgboost", 
+                                               "rf", 
+                                               "elastic", 
+                                               "arima"),
+                                   Importance = rep(1 / 4, 4)) %>% 
   ggplot(aes(Importance, reorder(feature, Importance))) +
   geom_col() +
   labs(title = "Ensemble models",
@@ -86,4 +87,3 @@ preds_vs_actuals_ensemble %>%
   summarise_if(is.numeric, mean) %>% 
   suppressMessages() %>% 
   print()
-

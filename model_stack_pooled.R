@@ -119,13 +119,14 @@ pred_plot_stack <- preds_vs_actuals_stack %>%
   ggplot(aes(date, value, color = name)) +
   geom_line() + 
   facet_wrap(~country) +
+  scale_color_manual(values = c("black", "#00BFC4")) +
   ggtitle("Stacked model") +
   xlab("Date") +
   ylab(cagr_name) +
   theme_minimal() +
   theme(legend.position = "none")
 
-importance_stack <- stack_model$fit$fit$fit %>% 
+importance_plot_stack <- stack_model$fit$fit$fit %>% 
   coef(s = stack_model$fit$fit$spec$args$penalty) %>% 
   as.matrix() %>% 
   as.data.frame() %>% 

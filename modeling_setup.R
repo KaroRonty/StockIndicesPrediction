@@ -1,6 +1,7 @@
 library(vip)
 library(fable)
 library(furrr)
+library(feasts)
 library(useful)
 library(parallel)
 library(lubridate)
@@ -13,7 +14,7 @@ to_model_temp <- to_model_exploration %>%
   rename(cagr_n_year := !!cagr_name) %>% 
   mutate_if(is.numeric, ~if_else(is.na(.x), 1000, .x)) %>% 
   filter(date > yearmonth(ymd("1981-01-01")))
-  
+
 kept_countries <- to_model_temp %>% 
   as_tibble() %>% 
   group_by(country) %>% 

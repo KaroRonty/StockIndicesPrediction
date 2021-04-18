@@ -1,28 +1,28 @@
 to_model_var_temp <- build.x(~ .,
-                               data = to_model_mm[, -1:-2],
-                               contrasts = FALSE) %>% 
+                             data = to_model_mm[, -1:-2],
+                             contrasts = FALSE) %>% 
   as_tibble() %>% 
   add_column(date = to_model_mm$date) %>% 
   # TODO
   mutate_if(is.numeric, ~ifelse(.x == 1000, NA, .x))
 
 model_data_var_temp <- make_splits(split_indices, 
-                                     to_model_var_temp %>% 
-                                       # select(-date) %>% 
-                                       mutate(date = as.numeric(date)) %>%
-                                       as.matrix())
+                                   to_model_var_temp %>% 
+                                     # select(-date) %>% 
+                                     mutate(date = as.numeric(date)) %>%
+                                     as.matrix())
 
 model_training_var_temp <- training(model_data_var_temp)
 model_test_var_temp <- testing(model_data_var_temp)
 
 model_recipe_var <- recipe(cagr_n_year ~ # FIXME
-                               cape + 
-                               dividend_yield + 
-                               rate_10_year + # FIXME
-                               unemployment +
-                               s_rate_10_year +
-                               cpi, 
-                             data = model_training_var_temp) %>% 
+                             cape + 
+                             dividend_yield + 
+                             rate_10_year + # FIXME
+                             unemployment +
+                             s_rate_10_year +
+                             cpi, 
+                           data = model_training_var_temp) %>% 
   step_knnimpute(cape,
                  dividend_yield,
                  rate_10_year, 
@@ -40,7 +40,6 @@ to_model_var <- model_recipe_var %>%
 # errors to big if all features are  differenced
 to_model_var_diff <- to_model_var %>% 
   mutate(cagr_n_year = difference(cagr_n_year))
-         
 
 # manual set up to prevent name conflicts
 predictors_var <- c("cagr_n_year", "cape", "dividend_yield", "rate_10_year", 
@@ -99,10 +98,9 @@ model_var <- function(selected_country){
         training = model_training_var,
         leakage = model_leakage_var,
         test = model_test_var)") %>% 
-            parse(text = .) %>% 
-            eval()
+    parse(text = .) %>% 
+    eval()
 }
-
 
 if(exists("cl")){
   print("Starting VAR cluster...")
@@ -116,22 +114,21 @@ registerDoParallel(cl)
 # 1 sec
 tic_var <- Sys.time()
 var_model <- future_map(countries_to_predict,
-                          ~model_var(.x))
+                        ~model_var(.x))
 print(toc_var <- Sys.time() - tic_var)
 
 
 
 # FIXME: something with length of names
 var_fcast <- future_map(seq_len(length(var_model)),
-                          ~var_model %>% 
-                            pluck(.x) %>% 
-                            pluck(1) %>% 
-                            forecast(var_model %>% 
-                                       pluck(.x) %>% 
-                                       pluck(4) %>% 
-                                       select(-cagr_n_year))) %>% 
+                        ~var_model %>% 
+                          pluck(.x) %>% 
+                          pluck(1) %>% 
+                          forecast(var_model %>% 
+                                     pluck(.x) %>% 
+                                     pluck(4) %>% 
+                                     select(-cagr_n_year))) %>% 
   reduce(bind_rows)
-
 
 backtransform_var <- function(bb){
   var_fcast %>% 
@@ -141,13 +138,14 @@ backtransform_var <- function(bb){
     na.omit() %>% 
     as.vector() %>% 
     diffinv(lag = 1, 
-            xi = to_model_var %>% filter(date < yearmonth(leakage_start_date) | # FIXME 
-                                           date >= yearmonth(leakage_start_date)) %>% 
-                                filter(country == bb) %>% 
-                                select(cagr_n_year) %>% 
+            xi = to_model_var %>% 
+              filter(date < yearmonth(leakage_start_date) | # FIXME 
+                       date >= yearmonth(leakage_start_date)) %>% 
+              filter(country == bb) %>% 
+              select(cagr_n_year) %>% 
               na.omit() %>% 
               tail(n = 1)
-            ) %>% 
+    ) %>% 
     as_tibble() %>% 
     mutate(cagr_n_year = value,
            country = bb) %>% 
@@ -156,30 +154,28 @@ backtransform_var <- function(bb){
 }
 
 var_fcast_bt <- map(countries_to_predict, 
-                        ~backtransform_var(.x)) %>% 
+                    ~backtransform_var(.x)) %>% 
   reduce(bind_rows)
 
-
 var_fitted <- future_map(seq_len(length(var_model)),
-                           ~var_model %>% 
-                             pluck(.x) %>% 
-                             pluck(1) %>% 
-                             pull(var) %>%
-                             pluck(1) %>%
-                             .$fit %>%
-                             .$est %>%
-                             .$.fitted) %>%
+                         ~var_model %>% 
+                           pluck(.x) %>% 
+                           pluck(1) %>% 
+                           pull(var) %>%
+                           pluck(1) %>%
+                           .$fit %>%
+                           .$est %>%
+                           .$.fitted) %>%
   reduce(c)
-
 
 var_pred <- var_fcast %>% 
   pull(.mean_cagr_n_year)
 
 var_actual <- future_map(seq_len(length(var_model)),
-                           ~var_model %>% 
-                             pluck(.x) %>% 
-                             pluck(4) %>% 
-                             pull(cagr_n_year)) %>% 
+                         ~var_model %>% 
+                           pluck(.x) %>% 
+                           pluck(4) %>% 
+                           pull(cagr_n_year)) %>% 
   reduce(c)
 
 var_training_to_plot <- future_map(
@@ -215,19 +211,17 @@ pred_plot_var <- var_fcast %>%
   autolayer(var_actual_to_plot, cagr_n_year, color = "black") +
   facet_wrap(~country)
 
-  # autoplot(color = "red") +
-  # autolayer(var_training_to_plot, cagr_n_year, color = "black") +
-  # autolayer(var_leakage_to_plot, cagr_n_year, color = "gray") +
-  # autolayer(var_actual_to_plot, cagr_n_year, color = "black") +
-  # facet_wrap(~country) +
-  # coord_cartesian(ylim = c(0.75,1.5)) +
-  # labs(title = "var",
-  #      x = "Date",
-  #      y = cagr_name) +
-  # theme_minimal() +
-  # theme(legend.position = "none")
-
-  
+# autoplot(color = "red") +
+# autolayer(var_training_to_plot, cagr_n_year, color = "black") +
+# autolayer(var_leakage_to_plot, cagr_n_year, color = "gray") +
+# autolayer(var_actual_to_plot, cagr_n_year, color = "black") +
+# facet_wrap(~country) +
+# coord_cartesian(ylim = c(0.75,1.5)) +
+# labs(title = "var",
+#      x = "Date",
+#      y = cagr_name) +
+# theme_minimal() +
+# theme(legend.position = "none")
 
 pred_vs_actual_var <- var_actual_to_plot %>% 
   as_tibble() %>% 
@@ -273,15 +267,18 @@ acc_single_var <- preds_vs_actuals %>%
   suppressMessages()
 
 
-# VALIDATION -----
+# Validation --------------------------------------------------------------
 
 # differencing only applied to LM for AUSTRALIA 
-map(1:8, ~var_model[[.x]] %>% 
+map(1:length(countries_to_predict), 
+    ~var_model[[.x]] %>% 
       .$model %>% 
       .$var) %>% 
   reduce(c) %>% 
   tibble(models = .,
-         country = map(1:8, ~var_model[[.x]] %>% .$model %>% 
+         country = map(1:length(countries_to_predict), 
+                       ~var_model[[.x]] %>% 
+                         .$model %>% 
                          .$country) %>%
            reduce(c))
 
@@ -289,8 +286,8 @@ map(1:8, ~var_model[[.x]] %>%
 # CANADA; USA; UK; NETHERLANDS; GERMANY; SPAIN; SWITZERLAND are not white-noise
 # including mandatory d or D does not change the white-noise in the series
 
-
-resid_data <- map_dfr(1:8, ~var_model %>% 
+resid_data <- map_dfr(1:length(countries_to_predict), 
+                      ~var_model %>% 
                         pluck(.x) %>% 
                         .$model %>% 
                         .$var %>% 
@@ -309,23 +306,25 @@ resid_data %>%
   labs(title = "All countries show non white-noise typical residuals") +
   theme_bw()
 
-acf_data <- map_dfr(1:8, ~var_model %>% 
+acf_data <- map_dfr(1:length(countries_to_predict), 
+                    ~var_model %>% 
                       pluck(.x) %>%
                       pluck(2) %>% 
-                      feasts::PACF() %>% 
+                      PACF() %>% 
                       as_tibble()) %>% 
   left_join(
-    map_dfr(1:8, ~var_model %>% 
+    map_dfr(1:length(countries_to_predict), 
+            ~var_model %>% 
               pluck(.x) %>%
               pluck(2) %>% 
-              feasts::ACF() %>% 
+              ACF() %>% 
               as_tibble())
   )
 
 acf_data %>% 
   select(-pacf) %>% 
   ggplot(aes(lag, acf)) +
-  geom_col(width = .1) +
+  geom_col(width = 0.1) +
   facet_wrap(~country) +
   labs(title = "ACF Analysis shows considerable autocorrelation left in the residuals") +
   theme_bw()
@@ -333,31 +332,30 @@ acf_data %>%
 acf_data %>% 
   select(-acf) %>% 
   ggplot(aes(lag, pacf)) +
-  geom_col(width = .1) +
+  geom_col(width = 0.1) +
   facet_wrap(~country) +
   labs(title = "PACF shows strong autocorrelation effect of previously predicted CAGR lag") +
   theme_bw()
 
 # significance of params
-sig_var_auto <- map_dfr(1:8, ~var_model[[.x]] %>% 
-                            .$model %>% 
-                            .$var %>% 
-                            pluck(1) %>% 
-                            .$fit %>% 
-                            .$par %>% 
-                            mutate(country = var_model[[.x]] %>% 
-                                     .$model %>% 
-                                     .$country))
+sig_var_auto <- map_dfr(1:length(countries_to_predict), 
+                        ~var_model[[.x]] %>% 
+                          .$model %>% 
+                          .$var %>% 
+                          pluck(1) %>% 
+                          .$fit %>% 
+                          .$par %>% 
+                          mutate(country = var_model[[.x]] %>% 
+                                   .$model %>% 
+                                   .$country))
 
 sig_var_auto %>% 
   filter(term %in% c("ar1", "ar2", "sar1", "sar2", "ma1", "sma1")) %>% 
   ggplot(aes(country, p.value)) +
   geom_col() +
-  coord_cartesian(ylim = c(0,0.05)) +
+  coord_cartesian(ylim = c(0, 0.05)) +
   facet_wrap(~term, scales = "free") +
   labs(title = "Significance Analysis of d = 1 forced auto.var models",
        subtitle = "Coefficients are less significant but also overall less prevalent because of the differencing") +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))

@@ -139,19 +139,20 @@ training_preds_vs_actuals <- training_preds_vs_actuals %>%
            predict(model_training_elastic) %>% 
            pull(.pred))
 
-pred_plot_elastic <- preds_vs_actuals %>% 
+pred_plot_elastic <- elastic_model %>% 
   pivot_longer(c(actual, elastic_pred)) %>% 
   filter(country %in% countries_to_predict) %>% 
   ggplot(aes(date, value, color = name)) +
   geom_line() + 
   facet_wrap(~country) +
+  scale_color_manual(values = c("black", "#00BFC4")) +
   ggtitle("Elastic Net") +
   xlab("Date") +
   ylab(cagr_name) +
   theme_minimal() +
   theme(legend.position = "none")
 
-importance_elastic <- elastic_model %>% 
+importance_plot_elastic <- elastic_model %>% 
   pull_workflow_fit() %>% 
   vip() +
   ggtitle("Elastic Net") +
@@ -176,5 +177,3 @@ preds_vs_actuals %>%
   summarise_if(is.numeric, median) %>% 
   suppressMessages() %>% 
   print()
-
-

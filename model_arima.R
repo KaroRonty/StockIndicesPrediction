@@ -39,19 +39,16 @@ to_model_arima <- model_recipe_arima %>%
 # stationarity analysis
 cp <- crossing(countries_to_predict, predictors)
 
-diffs <- map(1:nrow(cp), ~to_model_arima %>% 
-      filter(country == paste0(cp[.x, 1])) %>% 
-      select(paste0(cp[.x, 2])) %>%
-      as.matrix() %>% 
-      forecast::ndiffs(test = c("kpss")) %>% 
-      tibble(d = .,
-             Country = paste(cp[.x, 1]),
-             Predictor = paste(cp[.x, 2]))) %>% 
-      reduce(bind_rows)
-
-
-      
-      
+diffs <- map(1:nrow(cp), 
+             ~to_model_arima %>% 
+               filter(country == paste0(cp[.x, 1])) %>% 
+               select(paste0(cp[.x, 2])) %>%
+               as.matrix() %>% 
+               forecast::ndiffs(test = c("kpss")) %>% 
+               tibble(d = .,
+                      Country = paste(cp[.x, 1]),
+                      Predictor = paste(cp[.x, 2]))) %>% 
+  reduce(bind_rows)
 
 model_arima <- function(selected_country){
   
@@ -104,8 +101,8 @@ model_arima <- function(selected_country){
                         collapse = " + "),
                  # include differencing
                  "+ pdq(d = 1:5)")
-                 # + PDQ(D = 1:4)"
-                 ))),
+           # + PDQ(D = 1:4)"
+         ))),
        training = model_training_arima,
        leakage = model_leakage_arima,
        test = model_test_arima)
@@ -145,7 +142,6 @@ arima_fitted <- future_map(seq_len(length(arima_model)),
                              .$est %>%
                              .$.fitted) %>%
   reduce(c)
-
 
 arima_pred <- arima_fcast %>% 
   pull(.mean)
@@ -204,7 +200,6 @@ pred_vs_actual_arima <- arima_actual_to_plot %>%
 
 preds_vs_actuals <- preds_vs_actuals %>% 
   left_join(pred_vs_actual_arima)
-  
 
 suppressMessages(
   pred_vs_actual_arima %>% 
@@ -224,35 +219,37 @@ suppressMessages(
     summarise_if(is.numeric, median)) %>% 
   print()
 
-
-# VALIDATION -----
+# Validation --------------------------------------------------------------
 
 # differencing only applied to LM for AUSTRALIA 
-map(1:8, ~arima_model[[.x]] %>% 
+map(1:length(countries_to_predict), 
+    ~arima_model[[.x]] %>% 
       .$model %>% 
       .$arima) %>% 
   reduce(c) %>% 
   tibble(models = .,
-         country = map(1:8, ~arima_model[[.x]] %>% .$model %>% 
-          .$country) %>%
-          reduce(c))
+         country = map(1:length(countries_to_predict), 
+                       ~arima_model[[.x]] %>% 
+                         .$model %>% 
+                         .$country) %>%
+           reduce(c))
 
 # checking residuals of ARIMA models
 # CANADA; USA; UK; NETHERLANDS; GERMANY; SPAIN; SWITZERLAND are not white-noise
 # including mandatory d or D does not change the white-noise in the series
 
-
-resid_data <- map_dfr(1:8, ~arima_model %>% 
-  pluck(.x) %>% 
-  .$model %>% 
-  .$arima %>% 
-  pluck(1) %>% 
-  residuals() %>% 
-  mutate(country = arima_model %>% 
-           pluck(.x) %>% 
-           .$model %>% 
-           .$country) %>% 
-  as_tibble())
+resid_data <- map_dfr(1:length(countries_to_predict),
+                      ~arima_model %>% 
+                        pluck(.x) %>% 
+                        .$model %>% 
+                        .$arima %>% 
+                        pluck(1) %>% 
+                        residuals() %>% 
+                        mutate(country = arima_model %>% 
+                                 pluck(.x) %>% 
+                                 .$model %>% 
+                                 .$country) %>% 
+                        as_tibble())
 
 resid_data %>% 
   ggplot(aes(date, .resid)) +
@@ -261,23 +258,25 @@ resid_data %>%
   labs(title = "All countries show non white-noise typical residuals") +
   theme_bw()
 
-acf_data <- map_dfr(1:8, ~arima_model %>% 
+acf_data <- map_dfr(1:length(countries_to_predict), 
+                    ~arima_model %>% 
                       pluck(.x) %>%
                       pluck(2) %>% 
                       feasts::PACF() %>% 
                       as_tibble()) %>% 
   left_join(
-    map_dfr(1:8, ~arima_model %>% 
+    map_dfr(1:length(countries_to_predict), 
+            ~arima_model %>% 
               pluck(.x) %>%
               pluck(2) %>% 
-              feasts::ACF() %>% 
+              ACF() %>% 
               as_tibble())
   )
-  
+
 acf_data %>% 
   select(-pacf) %>% 
   ggplot(aes(lag, acf)) +
-  geom_col(width = .1) +
+  geom_col(width = 0.1) +
   facet_wrap(~country) +
   labs(title = "ACF Analysis shows considerable autocorrelation left in the residuals") +
   theme_bw()
@@ -285,31 +284,30 @@ acf_data %>%
 acf_data %>% 
   select(-acf) %>% 
   ggplot(aes(lag, pacf)) +
-  geom_col(width = .1) +
+  geom_col(width = 0.1) +
   facet_wrap(~country) +
   labs(title = "PACF shows strong autocorrelation effect of previously predicted CAGR lag") +
   theme_bw()
 
 # significance of params
-sig_arima_auto <- map_dfr(1:8, ~arima_model[[.x]] %>% 
-  .$model %>% 
-  .$arima %>% 
-  pluck(1) %>% 
-  .$fit %>% 
-  .$par %>% 
-  mutate(country = arima_model[[.x]] %>% 
-           .$model %>% 
-           .$country))
+sig_arima_auto <- map_dfr(1:length(countries_to_predict), 
+                          ~arima_model[[.x]] %>% 
+                            .$model %>% 
+                            .$arima %>% 
+                            pluck(1) %>% 
+                            .$fit %>% 
+                            .$par %>% 
+                            mutate(country = arima_model[[.x]] %>% 
+                                     .$model %>% 
+                                     .$country))
 
 sig_arima_auto %>% 
   filter(term %in% c("ar1", "ar2", "sar1", "sar2", "ma1", "sma1")) %>% 
   ggplot(aes(country, p.value)) +
   geom_col() +
-  coord_cartesian(ylim = c(0,0.05)) +
+  coord_cartesian(ylim = c(0, 0.05)) +
   facet_wrap(~term, scales = "free") +
   labs(title = "Significance Analysis of d = 1 forced auto.ARIMA models",
        subtitle = "Coefficients are less significant but also overall less prevalent because of the differencing") +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
