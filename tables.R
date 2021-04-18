@@ -1,5 +1,5 @@
 
-# accuracy results for XGB
+# accuracy results for POOLED XGB ------ 
 acc_pool_xgb <- preds_vs_actuals %>% 
   inner_join(mean_predictions) %>% 
   group_by(country) %>% 
@@ -13,7 +13,7 @@ acc_pool_xgb <- preds_vs_actuals %>%
                values_to = "value") %>% 
   suppressMessages()
 
-# accuracy results for RF
+# accuracy results for POOLED RF ------
 acc_pool_rf <- preds_vs_actuals %>% 
   inner_join(mean_predictions) %>% 
   group_by(country) %>% 
@@ -27,7 +27,7 @@ acc_pool_rf <- preds_vs_actuals %>%
                values_to = "value") %>% 
   suppressMessages()
 
-# accuracy results for EN
+# accuracy results for POOLED EN ------
 acc_pool_en <- preds_vs_actuals %>% 
   inner_join(mean_predictions) %>% 
   group_by(country) %>% 
@@ -41,8 +41,20 @@ acc_pool_en <- preds_vs_actuals %>%
                values_to = "value") %>% 
   suppressMessages()
 
+# accuracy results for ARIMA ------
+acc_single_arima <- preds_vs_actuals %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    MAPE = median(abs(((actual) - arima_pred) / actual)),
+    MAE = mean(abs(actual - arima_pred)),
+    RMSE = sqrt(sum((arima_pred - actual)^2) / 121)) %>%  # FIXME
+  mutate(model = "arima_single") %>% 
+  pivot_longer(cols = c(MAPE, MAE, RMSE),
+               names_to = "errors",
+               values_to = "value") %>% 
 
-# accuracy results for MEAN BENCHMARK MODEL
+# accuracy results for MEAN BENCHMARK MODEL ------
 acc_pool_mean <- preds_vs_actuals %>% 
   inner_join(mean_predictions) %>% 
   group_by(country) %>% 
@@ -55,21 +67,9 @@ acc_pool_mean <- preds_vs_actuals %>%
                names_to = "errors",
                values_to = "value") 
 
-# accuracy results for ARIMA
-acc_single_arima <- preds_vs_actuals %>% 
-  inner_join(mean_predictions) %>% 
-  group_by(country) %>% 
-  summarise(
-    MAPE = median(abs(((actual) - arima_pred) / actual)),
-    MAE = mean(abs(actual - arima_pred)),
-    RMSE = sqrt(sum((arima_pred - actual)^2) / 121)) %>%  # FIXME
-  mutate(model = "arima_single") %>% 
-  pivot_longer(cols = c(MAPE, MAE, RMSE),
-               names_to = "errors",
-               values_to = "value") %>% 
   suppressMessages()
 
-# accuracy results for NAIVE BENCHMARK MODEL
+# accuracy results for NAIVE BENCHMARK MODEL ------
 acc_single_naive <- preds_vs_actuals %>% 
   inner_join(mean_predictions) %>% 
   group_by(country) %>% 
@@ -83,7 +83,7 @@ acc_single_naive <- preds_vs_actuals %>%
                values_to = "value") %>% 
   suppressMessages()
 
-# accuracy table
+# ACCURACY ACROSS ALL COUNTRIES AND MODELS ------
 
 acc_pool_en %>% 
   bind_rows(acc_pool_xgb) %>% 
@@ -95,6 +95,7 @@ acc_pool_en %>%
   pivot_wider(names_from = model,
               values_from = value)
 
+# MAPE ACROSS ALL COUNTRIES AND MODELS ------
 acc_pool_en %>% 
   bind_rows(acc_pool_xgb) %>% 
   bind_rows(acc_pool_rf) %>% 
@@ -140,7 +141,13 @@ acc_pool_en %>%
   group_by(country, errors, base_models) %>% 
   summarise(increase = ((mean - value) / value) * 100) %>% 
   pivot_wider(names_from = base_models,
-              values_from = increase)
+              values_from = increase) %>% 
+  filter(errors == "MAPE") %>%
+  mutate_if(is.numeric, round, 3) 
+  kbl(caption = "Base-Model Performance Comapred to Historical Mean") %>%
+  kable_classic(full_width = F, html_font = "Times New Roman") 
+
+  # save_kable(file = "table1.html", self_contained = T)
 
 # average accuracy across all countries related to benchmark
 acc_pool_en %>% 
@@ -157,12 +164,18 @@ acc_pool_en %>%
                values_to = "value") %>% 
   ungroup() %>% 
   group_by(country, errors, base_models) %>% 
-  summarise(increase = ((mean - value) / value) * 100) %>% 
   pivot_wider(names_from = base_models,
-              values_from = increase) %>% 
+              values_from = value) %>% 
   ungroup() %>% 
   group_by(errors) %>% 
   summarise_if(is.numeric, mean) %>% 
-  suppressMessages() %>% 
-  print()
+  transmute(en_pool = ((mean - en_pool) / en_pool) * 100,
+            rf_pool = ((mean - rf_pool) / rf_pool) * 100,
+            xgb_pool = ((mean - xgb_pool) / xgb_pool) * 100,
+            arima_single = ((mean - arima_single) / arima_single) * 100) 
+    
+  filter(errors == "MAPE") %>%
+  mutate_if(is.numeric, round, 3) %>% 
+  kbl(caption = "Mean Performance Compared  to Historical Mean") %>%
+  kable_classic(full_width = F, html_font = "Times New Roman") 
 
