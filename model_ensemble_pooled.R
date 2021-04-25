@@ -1,5 +1,6 @@
 preds_vs_actuals_ensemble <- preds_vs_actuals %>% 
   filter(country %in% countries_to_predict) %>% 
+  group_by_all() %>% 
   mutate(ensemble_mean_pred = mean(c(xgboost_pred,
                                      rf_pred,
                                      elastic_pred,
