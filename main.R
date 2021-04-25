@@ -14,6 +14,7 @@ if(read_from_rds){
   suppressMessages(source("extract_data.R"))
 }
 
+source("functions.R")
 source("modeling_setup.R")
 source("model_xgboost_pooled.R")
 source("model_rf_pooled.R")
@@ -21,7 +22,6 @@ source("model_elastic_pooled.R")
 source("model_arima.R")
 source("model_stack_pooled.R")
 source("model_ensemble_pooled.R")
-source("functions.R")
 # source("partial_dependence.R")
 
 if(exists("cl")){

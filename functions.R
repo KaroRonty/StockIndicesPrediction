@@ -1,3 +1,291 @@
+get_final_single_rf_model <- function(.x){
+  selected_country <- countries_to_predict[.x]
+  
+  split_indices_df_rf_single <- to_model_rf_single_temp %>%  
+    filter(country == selected_country) %>% 
+    mutate(.row = row_number(),
+           set = case_when(date < yearmonth(leakage_start_date) ~ "training",
+                           date >= yearmonth(leakage_start_date) & 
+                             date < yearmonth(leakage_end_date) ~ "leakage",
+                           date >= yearmonth(leakage_end_date) ~ "test"))
+  
+  split_indices_rf_single <- list(
+    analysis = split_indices_df_rf_single %>% 
+      filter(set == "training") %>% 
+      pull(.row) %>% 
+      as.integer(),
+    assessment = split_indices_df_rf_single %>% 
+      filter(set == "test") %>% 
+      pull(.row) %>% 
+      as.integer())
+  
+  rf_single_data <- make_splits(
+    split_indices_rf_single, 
+    to_model_rf_single_temp %>% 
+      mutate(date = as.numeric(date)) %>%
+      filter(country == selected_country) %>% 
+      select(-country) %>% 
+      as.matrix())
+  
+  rf_single_training <- training(rf_single_data)
+  
+  model_recipe_rf_single <- recipe(
+    cagr_n_year ~ # FIXME
+      cape + 
+      dividend_yield + 
+      rate_10_year + # FIXME
+      unemployment +
+      s_rate_10_year +
+      cpi, 
+    data = rf_single_training) %>% 
+    step_nzv(cape,
+             dividend_yield,
+             rate_10_year,
+             unemployment,
+             s_rate_10_year,
+             cpi)
+  
+  rf_single_workflow <- workflow() %>%
+    add_recipe(model_recipe_rf_single) %>% 
+    add_model(rf_single_specification)
+  
+  set.seed(1)
+  rf_single_workflow %>% 
+    finalize_workflow(rf_tuning_results_single[[.x]] %>% 
+                        select_best(metric = "mape")) %>% 
+    fit(rf_single_training)
+}
+
+get_final_single_rf_training_predictions <- function(.x){
+  selected_country <- countries_to_predict[.x]
+  
+  split_indices_df_rf_single <- to_model_rf_single_temp %>%  
+    filter(country == selected_country) %>% 
+    mutate(.row = row_number(),
+           set = case_when(date < yearmonth(leakage_start_date) ~ "training",
+                           date >= yearmonth(leakage_start_date) & 
+                             date < yearmonth(leakage_end_date) ~ "leakage",
+                           date >= yearmonth(leakage_end_date) ~ "test"))
+  
+  split_indices_rf_single <- list(
+    analysis = split_indices_df_rf_single %>% 
+      filter(set == "training") %>% 
+      pull(.row) %>% 
+      as.integer(),
+    assessment = split_indices_df_rf_single %>% 
+      filter(set == "test") %>% 
+      pull(.row) %>% 
+      as.integer())
+  
+  rf_single_data <- make_splits(
+    split_indices_rf_single, 
+    to_model_rf_single_temp %>% 
+      mutate(date = as.numeric(date)) %>%
+      filter(country == selected_country) %>% 
+      select(-country) %>% 
+      as.matrix())
+  
+  rf_single_training <- training(rf_single_data)
+  
+  rf_model_single_temp <- rf_models_single[[.x]]
+  
+  tibble(date = rf_single_training %>% 
+           as_tibble() %>% 
+           pull(date) %>% 
+           yearmonth(),
+         country = selected_country,
+         rf_single_pred = rf_model_single_temp %>% 
+           predict(rf_single_training) %>% 
+           pull(.pred))
+}
+
+get_final_single_rf_predictions <- function(.x){
+  selected_country <- countries_to_predict[.x]
+  
+  split_indices_df_rf_single <- to_model_rf_single_temp %>%  
+    filter(country == selected_country) %>% 
+    mutate(.row = row_number(),
+           set = case_when(date < yearmonth(leakage_start_date) ~ "training",
+                           date >= yearmonth(leakage_start_date) & 
+                             date < yearmonth(leakage_end_date) ~ "leakage",
+                           date >= yearmonth(leakage_end_date) ~ "test"))
+  
+  split_indices_rf_single <- list(
+    analysis = split_indices_df_rf_single %>% 
+      filter(set == "training") %>% 
+      pull(.row) %>% 
+      as.integer(),
+    assessment = split_indices_df_rf_single %>% 
+      filter(set == "test") %>% 
+      pull(.row) %>% 
+      as.integer())
+  
+  rf_single_data <- make_splits(
+    split_indices_rf_single, 
+    to_model_rf_single_temp %>% 
+      mutate(date = as.numeric(date)) %>%
+      filter(country == selected_country) %>% 
+      select(-country) %>% 
+      as.matrix())
+  
+  rf_single_test <- testing(rf_single_data)
+  
+  rf_model_single_temp <- rf_models_single[[.x]]
+  
+  tibble(date = rf_single_test %>% 
+           as_tibble() %>% 
+           pull(date) %>% 
+           yearmonth(),
+         country = selected_country,
+         rf_single_pred = rf_model_single_temp %>% 
+           predict(rf_single_test) %>% 
+           pull(.pred))
+}
+
+get_final_single_xgboost_model <- function(.x){
+  selected_country <- countries_to_predict[.x]
+  
+  split_indices_df_xgboost_single <- to_model_xgboost_single_temp %>%  
+    filter(country == selected_country) %>% 
+    mutate(.row = row_number(),
+           set = case_when(date < yearmonth(leakage_start_date) ~ "training",
+                           date >= yearmonth(leakage_start_date) & 
+                             date < yearmonth(leakage_end_date) ~ "leakage",
+                           date >= yearmonth(leakage_end_date) ~ "test"))
+  
+  split_indices_xgboost_single <- list(
+    analysis = split_indices_df_xgboost_single %>% 
+      filter(set == "training") %>% 
+      pull(.row) %>% 
+      as.integer(),
+    assessment = split_indices_df_xgboost_single %>% 
+      filter(set == "test") %>% 
+      pull(.row) %>% 
+      as.integer())
+  
+  xgboost_single_data <- make_splits(
+    split_indices_xgboost_single, 
+    to_model_xgboost_single_temp %>% 
+      mutate(date = as.numeric(date)) %>%
+      filter(country == selected_country) %>% 
+      select(-country) %>% 
+      as.matrix())
+  
+  xgboost_single_training <- training(xgboost_single_data)
+  
+  model_recipe_xgboost_single <- recipe(
+    cagr_n_year ~ # FIXME
+      cape + 
+      dividend_yield + 
+      rate_10_year + # FIXME
+      unemployment +
+      s_rate_10_year +
+      cpi, 
+    data = xgboost_single_training) %>% 
+    step_nzv(cape,
+             dividend_yield,
+             rate_10_year,
+             unemployment,
+             s_rate_10_year,
+             cpi)
+  
+  xgboost_single_workflow <- workflow() %>%
+    add_recipe(model_recipe_xgboost_single) %>% 
+    add_model(xgboost_single_specification)
+  
+  set.seed(1)
+  xgboost_single_workflow %>% 
+    finalize_workflow(xgboost_tuning_results_single[[.x]] %>% 
+                        select_best(metric = "mape")) %>% 
+    fit(xgboost_single_training)
+}
+
+get_final_single_xgboost_training_predictions <- function(.x){
+  selected_country <- countries_to_predict[.x]
+  
+  split_indices_df_xgboost_single <- to_model_xgboost_single_temp %>%  
+    filter(country == selected_country) %>% 
+    mutate(.row = row_number(),
+           set = case_when(date < yearmonth(leakage_start_date) ~ "training",
+                           date >= yearmonth(leakage_start_date) & 
+                             date < yearmonth(leakage_end_date) ~ "leakage",
+                           date >= yearmonth(leakage_end_date) ~ "test"))
+  
+  split_indices_xgboost_single <- list(
+    analysis = split_indices_df_xgboost_single %>% 
+      filter(set == "training") %>% 
+      pull(.row) %>% 
+      as.integer(),
+    assessment = split_indices_df_xgboost_single %>% 
+      filter(set == "test") %>% 
+      pull(.row) %>% 
+      as.integer())
+  
+  xgboost_single_data <- make_splits(
+    split_indices_xgboost_single, 
+    to_model_xgboost_single_temp %>% 
+      mutate(date = as.numeric(date)) %>%
+      filter(country == selected_country) %>% 
+      select(-country) %>% 
+      as.matrix())
+  
+  xgboost_single_training <- training(xgboost_single_data)
+  
+  xgboost_model_single_temp <- xgboost_models_single[[.x]]
+  
+  tibble(date = xgboost_single_training %>% 
+           as_tibble() %>% 
+           pull(date) %>% 
+           yearmonth(),
+         country = selected_country,
+         xgboost_single_pred = xgboost_model_single_temp %>% 
+           predict(xgboost_single_training) %>% 
+           pull(.pred))
+}
+
+get_final_single_xgboost_predictions <- function(.x){
+  selected_country <- countries_to_predict[.x]
+  
+  split_indices_df_xgboost_single <- to_model_xgboost_single_temp %>%  
+    filter(country == selected_country) %>% 
+    mutate(.row = row_number(),
+           set = case_when(date < yearmonth(leakage_start_date) ~ "training",
+                           date >= yearmonth(leakage_start_date) & 
+                             date < yearmonth(leakage_end_date) ~ "leakage",
+                           date >= yearmonth(leakage_end_date) ~ "test"))
+  
+  split_indices_xgboost_single <- list(
+    analysis = split_indices_df_xgboost_single %>% 
+      filter(set == "training") %>% 
+      pull(.row) %>% 
+      as.integer(),
+    assessment = split_indices_df_xgboost_single %>% 
+      filter(set == "test") %>% 
+      pull(.row) %>% 
+      as.integer())
+  
+  xgboost_single_data <- make_splits(
+    split_indices_xgboost_single, 
+    to_model_xgboost_single_temp %>% 
+      mutate(date = as.numeric(date)) %>%
+      filter(country == selected_country) %>% 
+      select(-country) %>% 
+      as.matrix())
+  
+  xgboost_single_test <- testing(xgboost_single_data)
+  
+  xgboost_model_single_temp <- xgboost_models_single[[.x]]
+  
+  tibble(date = xgboost_single_test %>% 
+           as_tibble() %>% 
+           pull(date) %>% 
+           yearmonth(),
+         country = selected_country,
+         xgboost_single_pred = xgboost_model_single_temp %>% 
+           predict(xgboost_single_test) %>% 
+           pull(.pred))
+}
+
 custom_pdp <- function (X, X.model, pred.fun, J, K){
   N = dim(X)[1]
   d = dim(X)[2]
