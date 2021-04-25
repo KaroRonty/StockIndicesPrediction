@@ -30,10 +30,10 @@ get_final_single_rf_model <- function(.x){
   rf_single_training <- training(rf_single_data)
   
   model_recipe_rf_single <- recipe(
-    cagr_n_year ~ # FIXME
+    cagr_n_year ~
       cape + 
       dividend_yield + 
-      rate_10_year + # FIXME
+      rate_10_year +
       unemployment +
       s_rate_10_year +
       cpi, 
@@ -174,10 +174,10 @@ get_final_single_xgboost_model <- function(.x){
   xgboost_single_training <- training(xgboost_single_data)
   
   model_recipe_xgboost_single <- recipe(
-    cagr_n_year ~ # FIXME
+    cagr_n_year ~
       cape + 
       dividend_yield + 
-      rate_10_year + # FIXME
+      rate_10_year +
       unemployment +
       s_rate_10_year +
       cpi, 

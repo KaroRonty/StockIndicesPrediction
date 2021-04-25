@@ -45,10 +45,10 @@ model_xgboost_single <- function(selected_country){
   xgboost_single_training <- training(xgboost_single_data)
   
   model_recipe_xgboost_single <- recipe(
-    cagr_n_year ~ # FIXME
+    cagr_n_year ~
       cape + 
       dividend_yield + 
-      rate_10_year + # FIXME
+      rate_10_year +
       unemployment +
       s_rate_10_year +
       cpi, 

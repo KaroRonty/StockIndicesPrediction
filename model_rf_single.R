@@ -85,7 +85,7 @@ model_rf_single <- function(selected_country){
   rf_single_folds <- rf_single_training %>% 
     rolling_origin(initial = 12 * 7,
                    assess = 12 * 2,
-                   skip = 12 * 1, # FIXME 0
+                   skip = 12 * 1,
                    lag = 12 * 5)
   
   set.seed(1)

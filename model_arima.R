@@ -3,7 +3,6 @@ to_model_arima_temp <- build.x(~ .,
                                contrasts = FALSE) %>% 
   as_tibble() %>% 
   add_column(date = to_model_mm$date) %>% 
-  # TODO
   mutate_if(is.numeric, ~ifelse(.x == 1000, NA, .x))
 
 model_data_arima_temp <- make_splits(split_indices, 
@@ -14,10 +13,10 @@ model_data_arima_temp <- make_splits(split_indices,
 model_training_arima_temp <- training(model_data_arima_temp)
 model_test_arima_temp <- testing(model_data_arima_temp)
 
-model_recipe_arima <- recipe(cagr_n_year ~ # FIXME
+model_recipe_arima <- recipe(cagr_n_year ~
                                cape + 
                                dividend_yield + 
-                               rate_10_year + # FIXME
+                               rate_10_year +
                                unemployment +
                                s_rate_10_year +
                                cpi, 
@@ -143,7 +142,7 @@ arima_fitted <- future_map(seq_len(length(arima_model)),
                              .$.fitted) %>%
   reduce(c)
 
-arima_pred <- arima_fcast %>% 
+arima_single_pred <- arima_fcast %>% 
   pull(.mean)
 
 arima_actual <- future_map(seq_len(length(arima_model)),
@@ -183,40 +182,51 @@ pred_plot_arima <- arima_fcast %>%
   autolayer(arima_leakage_to_plot, cagr_n_year, color = "gray") +
   autolayer(arima_actual_to_plot, cagr_n_year, color = "black") +
   facet_wrap(~country) +
-  coord_cartesian(ylim = c(0.75,1.5)) +
+  coord_cartesian(ylim = c(0.75, 1.5)) +
   labs(title = "ARIMA",
        x = "Date",
        y = cagr_name) +
   theme_minimal() +
   theme(legend.position = "none")
 
+pred_vs_actual_training_arima <- arima_training_to_plot %>% 
+  as_tibble() %>% 
+  rename(actual = cagr_n_year) %>% 
+  mutate(arima_single_pred = arima_fitted) %>% 
+  suppressMessages()
+
+training_preds_vs_actuals <- training_preds_vs_actuals %>% 
+  left_join(pred_vs_actual_training_arima)
+
 pred_vs_actual_arima <- arima_actual_to_plot %>% 
   as_tibble() %>% 
   rename(actual = cagr_n_year) %>% 
   inner_join(arima_fcast %>% 
                as_tibble() %>% 
-               select(date, country, arima_pred = .mean)) %>% 
+               select(date, country, arima_single_pred = .mean)) %>% 
   suppressMessages()
 
 preds_vs_actuals <- preds_vs_actuals %>% 
   left_join(pred_vs_actual_arima)
 
-suppressMessages(
-  pred_vs_actual_arima %>% 
-    inner_join(mean_predictions) %>% 
-    group_by(country) %>% 
-    summarise(arima_mape = median(abs(((actual) - arima_pred) / actual)),
-              mean_mape = median(abs(((actual) - mean_prediction) / actual))))
 
-suppressMessages(
-  pred_vs_actual_arima %>% 
-    inner_join(mean_predictions) %>% 
-    group_by(country) %>% 
-    summarise(
-      arima_mape = median(abs(((actual) - arima_pred) / actual)),
-      mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
-    ungroup() %>% 
-    summarise_if(is.numeric, median)) %>% 
+pred_vs_actual_arima %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    arima_mape = median(abs(((actual) - arima_single_pred) / actual)),
+    mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>% 
+  suppressMessages()
+
+pred_vs_actual_arima %>% 
+  inner_join(mean_predictions) %>% 
+  group_by(country) %>% 
+  summarise(
+    arima_mape = median(abs(((actual) - arima_single_pred) / actual)),
+    mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
+  ungroup() %>% 
+  summarise_if(is.numeric, median) %>% 
+  suppressMessages() %>% 
   print()
 
 # Validation --------------------------------------------------------------
@@ -271,7 +281,8 @@ acf_data <- map_dfr(1:length(countries_to_predict),
               pluck(2) %>% 
               ACF() %>% 
               as_tibble())
-  )
+  ) %>% 
+  suppressMessages()
 
 acf_data %>% 
   select(-pacf) %>% 

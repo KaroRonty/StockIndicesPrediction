@@ -10,7 +10,6 @@ library(tidymodels)
 library(doParallel)
 
 to_model_temp <- to_model_exploration %>% 
-  # filter(country == selected_country) %>% # TODO
   select(date, country, !!cagr_name, !!predictors) %>% 
   rename(cagr_n_year := !!cagr_name) %>% 
   mutate_if(is.numeric, ~if_else(is.na(.x), 1000, .x)) %>% 
@@ -25,8 +24,6 @@ kept_countries <- to_model_temp %>%
 
 to_model_countries <- to_model_temp %>% 
   filter(country %in% kept_countries)
-
-# TODO only same countries as in training
 
 to_model_mm <- to_model_countries %>% 
   as_tibble() %>% 
@@ -86,10 +83,10 @@ model_test <- testing(model_data)
 model_folds <- model_training %>% 
   rolling_origin(initial = 2700,
                  assess = 900,
-                 skip = 300, # FIXME 0
+                 skip = 300,
                  lag = 1800)
 
-model_recipe <- recipe(cagr_n_year ~ # FIXME
+model_recipe <- recipe(cagr_n_year ~
                          countryAUSTRALIA + 
                          countryAUSTRIA + 
                          countryBELGIUM + 

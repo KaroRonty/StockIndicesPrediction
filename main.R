@@ -20,6 +20,8 @@ source("model_xgboost_pooled.R")
 source("model_rf_pooled.R")
 source("model_elastic_pooled.R")
 source("model_arima.R")
+source("model_xgboost_single.R")
+source("model_rf_single.R")
 source("model_stack_pooled.R")
 source("model_ensemble_pooled.R")
 # source("partial_dependence.R")
@@ -33,13 +35,15 @@ if(exists("cl")){
 # 8.7 h
 (toc_all <- Sys.time() - tic_all)
 
-#   MAPE |  Min | Model
-# 0.0584 |   NA | MEAN
+#   MAPE |  Min  | Model
+# 0.0584 |   NA  | MEAN
 # ------------------------------
-# 0.0360 | 430  | XGBoost
-# 0.0280 | 13.3 | Random Forest
-# 0.0284 | 24.4 | Elastic net
-# 0.0816 |  0.3 | ARIMA
-# 0.0301 | 47.5 | Stack
-# 0.0368 |   NA | Ensemble mean
-# 0.0296 |   NA | Ensemble median
+# 0.0360 | 430.8 | XGBoost
+# 0.0280 |  11.9 | Random Forest
+# 0.0284 |  11.9 | Elastic net
+# 0.0621 |   0.2 | Single ARIMA
+# 0.0287 |  71.0 | Single XGBoost
+# 0.0329 |  13.6 | Single Random Forest
+# 0.0436 |    NA | Ensemble mean
+# 0.0437 |    NA | Ensemble median
+# 0.0260 |  40.7 | Stack
