@@ -147,7 +147,8 @@ mean_predictions <- tibble(date = to_model_mm %>%
                            actual = training_temp$cagr_n_year) %>% 
   filter(country %in% countries_to_predict) %>% 
   group_by(country) %>% 
-  summarise(mean_prediction = mean(actual, na.rm = TRUE))
+  summarise(mean_prediction = mean(actual, na.rm = TRUE),
+            naive_prediction = last(na.omit(actual)))
 
 # Initialize tibbles for predictions
 preds_vs_actuals <- tibble(
