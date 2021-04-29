@@ -1,4 +1,5 @@
 library(readxl)
+library(Matrix)
 library(tsibble)
 library(tidyverse)
 
@@ -24,7 +25,7 @@ source("model_xgboost_single.R")
 source("model_rf_single.R")
 source("model_stack_pooled.R")
 source("model_ensemble_pooled.R")
-# source("partial_dependence.R")
+source("accumulated_local_effects.R")
 
 if(exists("cl")){
   print("Stopping any remaining clusters...")

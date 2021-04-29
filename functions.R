@@ -286,6 +286,229 @@ get_final_single_xgboost_predictions <- function(.x){
            pull(.pred))
 }
 
+# TODO delete
+predict_tidymodels <- function(X.model, newdata){
+  X.model %>% 
+    predict(newdata) %>% 
+    pull(.pred)
+}
+
+predict_xgboost <- function(newdata){
+  to_model_xgboost_ale <- build.x(~ .,
+                                  data = to_ale[, -1],
+                                  contrasts = FALSE) %>% 
+    as_tibble() %>% 
+    add_column(date = to_ale$date) %>% 
+    full_join(to_model %>%
+                select(starts_with("country")) %>% 
+                slice(0)) %>% 
+    mutate_at(vars(starts_with("country")),
+              ~replace_na(0))
+  
+  ale_data_xgboost <- model_recipe_prepared %>% 
+    bake(to_model_xgboost_ale)
+  
+  xgboost_model %>% 
+    predict(to_model_xgboost_ale %>% 
+              add_column(country = newdata$country) %>% 
+              filter(country %in% countries_to_predict)) %>% 
+    mutate(country = newdata %>% 
+             filter(country %in% countries_to_predict) %>% 
+             pull(country),
+           date = newdata %>% 
+             filter(country %in% countries_to_predict) %>% 
+             pull(date)) %>% 
+    select(date, country, xgboost_pred = .pred)
+}
+
+predict_rf <- function(newdata){
+  to_model_rf_ale <- build.x(~ .,
+                             data = to_ale[, -1],
+                             contrasts = FALSE) %>% 
+    as_tibble() %>% 
+    add_column(date = to_ale$date) %>% 
+    full_join(to_model %>%
+                select(starts_with("country")) %>% 
+                slice(0)) %>% 
+    mutate_at(vars(starts_with("country")),
+              ~replace_na(0))
+  
+  ale_data_rf <- model_recipe_prepared %>% 
+    bake(to_model_rf_ale)
+  
+  rf_model %>% 
+    predict(to_model_rf_ale %>% 
+              add_column(country = newdata$country) %>% 
+              filter(country %in% countries_to_predict)) %>% 
+    mutate(country = newdata %>% 
+             filter(country %in% countries_to_predict) %>% 
+             pull(country),
+           date = newdata %>% 
+             filter(country %in% countries_to_predict) %>% 
+             pull(date)) %>% 
+    select(date, country, rf_pred = .pred)
+}
+
+predict_elastic <- function(newdata){
+  print(nrow(newdata))
+  print(nrow(build.x(~ .,
+                     data = newdata[, -1],
+                     contrasts = FALSE) %>% 
+               as_tibble()))
+  print(nrow(build.x(~ .,
+                     data = newdata[, -1],
+                     contrasts = FALSE) %>% 
+               as_tibble() %>% 
+               full_join(to_model %>%
+                           select(starts_with("country")) %>% 
+                           slice(0))))
+  to_model_elastic_ale <- build.x(~ .,
+                                  data = newdata[, -1],
+                                  contrasts = FALSE) %>% 
+    as_tibble() %>% 
+    full_join(to_model %>%
+                select(starts_with("country")) %>% 
+                slice(0)) %>% 
+    mutate_at(vars(starts_with("country")),
+              ~replace_na(0)) %>% 
+    mutate_if(is.numeric, ~ifelse(.x == 1000, NA, .x)) %>% 
+    add_column(date = newdata$date) 
+  
+  ale_data_elastic <- model_recipe_elastic_prepared %>% 
+    bake(to_model_elastic_ale)
+  
+  elastic_model %>% 
+    predict(to_model_elastic_ale %>% 
+              add_column(country = newdata$country) %>% 
+              filter(country %in% countries_to_predict)) %>% 
+    mutate(country = newdata %>% 
+             filter(country %in% countries_to_predict) %>% 
+             pull(country),
+           date = newdata %>% 
+             filter(country %in% countries_to_predict) %>% 
+             pull(date)) %>% 
+    select(date, country, elastic_pred = .pred)
+}
+
+predict_arima <- function(country_n, newdata){
+  
+  to_model_arima_ale <- build.x(~ .,
+                                data = newdata[, -1:-2],
+                                contrasts = FALSE) %>% 
+    as_tibble() %>% 
+    mutate_if(is.numeric, ~ifelse(.x == 1000, NA, .x))
+  
+  ale_data_arima <- model_recipe_arima_prepared %>% 
+    bake(to_model_arima_ale %>% 
+           mutate_all(as.numeric)) %>% 
+    mutate(country = countries_to_predict[country_n],
+           date = newdata$date) %>% 
+    # na.omit() %>% 
+    as_tsibble(key = "country") %>% 
+    suppressMessages()
+  
+  predict(arima_model[[country_n]][[1]], ale_data_arima) %>% 
+    as_tibble() %>% 
+    select(date, country, arima_single_pred = .mean)
+}
+
+predict_xgboost_single <- function(country_n, newdata){
+  to_model_xgboost_single_ale <- build.x(~ .,
+                                         data = newdata[, -1:-2],
+                                         contrasts = FALSE) %>% 
+    as_tibble() %>% 
+    add_column(date = as.numeric(newdata$date),
+               country = countries_to_predict[country_n])
+  
+  model_recipe_xgboost_single_ale <- recipe(
+    cagr_n_year ~
+      cape + 
+      dividend_yield + 
+      rate_10_year +
+      unemployment +
+      s_rate_10_year +
+      cpi, 
+    data = to_model_xgboost_single_ale)
+  
+  ale_data_xgboost_single <- model_recipe_xgboost_single_ale %>% 
+    prep() %>% 
+    bake(to_model_xgboost_single_ale)
+  
+  predict(xgboost_models_single[[country_n]], ale_data_xgboost_single) %>% 
+    mutate(country = countries_to_predict[country_n],
+           date = newdata$date) %>% 
+    select(date, country, xgboost_single_pred = .pred)
+}
+
+predict_rf_single <- function(country_n, newdata){
+  to_model_rf_single_ale <- build.x(~ .,
+                                    data = newdata[, -1:-2],
+                                    contrasts = FALSE) %>% 
+    as_tibble() %>% 
+    add_column(date = as.numeric(newdata$date),
+               country = countries_to_predict[country_n])
+  
+  model_recipe_rf_single_ale <- recipe(
+    cagr_n_year ~
+      cape + 
+      dividend_yield + 
+      rate_10_year +
+      unemployment +
+      s_rate_10_year +
+      cpi, 
+    data = to_model_rf_single_ale)
+  
+  ale_data_rf_single <- model_recipe_rf_single_ale %>% 
+    prep() %>% 
+    bake(to_model_rf_single_ale)
+  
+  predict(rf_models_single[[country_n]], ale_data_rf_single) %>% 
+    mutate(country = countries_to_predict[country_n],
+           date = newdata$date) %>% 
+    select(date, country, rf_single_pred = .pred)
+}
+
+predict_stack <- function(X.model, newdata){
+  xgboost_pred <- predict_xgboost(newdata)
+  rf_pred <- predict_rf(newdata)
+  elastic_pred <- predict_elastic(newdata)
+  arima_pred <- map(
+    seq_along(countries_to_predict),
+    ~predict_arima(
+      .x, 
+      newdata %>% 
+        filter(country == countries_to_predict[.x]))) %>% 
+    bind_rows()
+  xgboost_single_pred <- map(
+    seq_along(countries_to_predict),
+    ~predict_xgboost_single(
+      .x, 
+      newdata %>% 
+        filter(country == countries_to_predict[.x]))) %>% 
+    bind_rows()
+  rf_single_pred <- map(
+    seq_along(countries_to_predict),
+    ~predict_rf_single(
+      .x, 
+      newdata %>% 
+        filter(country == countries_to_predict[.x]))) %>% 
+    bind_rows()
+  
+  to_stack_ale <- map(c("xgboost_pred",
+                        "rf_pred",
+                        "elastic_pred",
+                        "arima_pred",
+                        "xgboost_single_pred",
+                        "rf_single_pred"),
+                      ~get(.x)) %>% 
+    reduce(full_join) %>% 
+    rename_with(~str_remove(.x, "_pred"))
+  
+  X.model %>% 
+    predict(to_stack_ale) %>% 
+    pull(.pred)
+}
+
 custom_pdp <- function (X, X.model, pred.fun, J, K){
   N = dim(X)[1]
   d = dim(X)[2]
@@ -293,8 +516,8 @@ custom_pdp <- function (X, X.model, pred.fun, J, K){
     if (class(X[, J]) == "numeric" | class(X[, J]) == "integer") {
       fJ = numeric(K)
       fJ = numeric(K)
-      xmin = min(X[, J][X[, J] < 10000])
-      xmax = max(X[, J][X[, J] < 10000])
+      xmin = min(X[, J][X[, J] < 1000])
+      xmax = max(X[, J][X[, J] < 1000])
       x = seq(xmin, xmax, length.out = K)
       for (k in 1:K) {
         X.predict = X
@@ -535,7 +758,7 @@ custom_ale <- function(X, X.model, pred.fun, J, K = 40, NA.plot = TRUE){
     }
     else if (class(X[, J]) == "numeric" | class(X[, J]) ==
              "integer") {
-      z = c(min(X[, J]), as.numeric(quantile(X[, J][X[, J] < 10000], seq(
+      z = c(min(X[, J]), as.numeric(quantile(X[, J][X[, J] < 1000], seq(
         1 / K,
         1, length.out = K
       ), type = 1)))
@@ -661,7 +884,7 @@ custom_ale <- function(X, X.model, pred.fun, J, K = 40, NA.plot = TRUE){
       if (nrow(NA.ind) > 0) {
         notNA.ind = which(!NA.Delta, arr.ind = T, useNames = F)
         range1 = K1 - 1
-        range2 = max(z2[z2 < 10000]) - min(z2)
+        range2 = max(z2[z2 < 1000]) - min(z2)
         Z.NA = cbind(NA.ind[, 1] / range1, (z2[NA.ind[,
                                                       2]] + z2[NA.ind[, 2] + 1]) /
                        2 / range2)
@@ -767,8 +990,8 @@ custom_ale <- function(X, X.model, pred.fun, J, K = 40, NA.plot = TRUE){
       NA.ind = which(NA.Delta, arr.ind = T, useNames = F)
       if (nrow(NA.ind) > 0) {
         notNA.ind = which(!NA.Delta, arr.ind = T, useNames = F)
-        range1 = max(z1[z1 < 10000]) - min(z1)
-        range2 = max(z2[z2 < 10000]) - min(z2)
+        range1 = max(z1[z1 < 1000]) - min(z1)
+        range2 = max(z2[z2 < 1000]) - min(z2)
         Z.NA = cbind((z1[NA.ind[, 1]] + z1[NA.ind[,
                                                   1] + 1]) / 2 / range1, (z2[NA.ind[, 2]] + z2[NA.ind[,
                                                                                                       2] + 1]) /
