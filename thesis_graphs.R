@@ -184,13 +184,13 @@ to_model_exploration %>%
 
 # create returns for different leads
 add_return <- function(df, lead){
-  col_name <- paste0("return_", lead, "_year")
+  col_name <- paste0("return_", lead, "_month")
   
   df %>% 
-    mutate(!!col_name := (lead(price, 12 * lead) / price))
+    mutate(!!col_name := (lead(price, 1 * lead) / price))
 }
 
-return_years <- seq(1:5)
+return_months <- c(1,12,24,36,48,60)
 
 prices_local_long <- suppressMessages(
   map(return_years,
@@ -323,8 +323,8 @@ preds_vs_actuals_ensemble %>%
 # statistically significant difference between models in terms of forecast accuracy
 
 # vector for model combinations
-base_models <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_pred", "mean_pred")
-base_models2 <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_pred", "mean_pred")
+base_models <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_pred", "mean_prediction")
+base_models2 <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_pred", "mean_prediction")
 horizons <- c(1,6,12,24,36,48,60,90,120)
 
 mc <- crossing(countries_to_predict, base_models, base_models2, horizons)
@@ -335,7 +335,7 @@ map(1:nrow(mc), ~preds_vs_actuals %>%
       filter(country %in% countries_to_predict) %>% 
       filter(country == paste0(mc[.x,1])) %>%
       mutate(period = row_number()) %>% # period number necessary for DM.test function
-      select(period, actual, xgboost_pred, rf_pred, elastic_pred, arima_pred, mean_pred) %>% 
+      select(period, actual, xgboost_pred, rf_pred, elastic_pred, arima_pred, mean_prediction) %>% 
       select(period, actual, paste(mc[.x,2]), paste(mc[.x,3])) %>%
       as.matrix() %>%  
       DM.test(pluck(3), 
@@ -363,4 +363,4 @@ signal_to_noise <- preds_vs_actuals %>%
             stn_rf = 1 - (var(actual - rf_pred) / var(actual)),
             stn_en = 1 - (var(actual - elastic_pred) / var(actual)),
             stn_arima = 1 - (var(actual - arima_pred) / var(actual)),
-            stn_mean = 1 - (var(actual - mean_pred) / var(actual))) 
+            stn_mean = 1 - (var(actual - mean_prediction) / var(actual))) 
