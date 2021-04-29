@@ -19,11 +19,26 @@ add_cagr_columns <- function(df, lead){
     mutate(!!col_name := (lead(price, 12 * lead) / price)^(1 / lead))
 }
 
+# Function for making monthly returns
+add_return_columns <- function(df, ll){
+  col_name <- paste0("return_", ll, "_month")
+  
+  df %>% 
+    mutate(!!col_name := 1 + (price - lag(price, ll)) / lag(price, ll))
+}
+
 # Computed separately due to lack of visibility inside a nested function
 prices_local_long <- suppressMessages(
   map(lead_years,
       ~add_cagr_columns(prices_local_long, .x)) %>% 
     reduce(inner_join))
+
+# Computed separately due to lack of visibility inside a nested function
+prices_local_long <- suppressMessages(
+  map(c(1,12,60),
+      ~add_return_columns(prices_local_long, .x)) %>% 
+    reduce(inner_join))
+
 
 # Value -------------------------------------------------------------------
 value_local_wide <- read_excel("Data/dm_vl.xlsx")
