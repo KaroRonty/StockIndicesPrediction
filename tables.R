@@ -52,7 +52,7 @@ acc_single_arima <- preds_vs_actuals %>%
   mutate(model = "arima_single") %>% 
   pivot_longer(cols = c(MAPE, MAE, RMSE),
                names_to = "errors",
-               values_to = "value") %>% 
+               values_to = "value")
 
 # accuracy results for MEAN BENCHMARK MODEL ------
 acc_pool_mean <- preds_vs_actuals %>% 
@@ -66,8 +66,6 @@ acc_pool_mean <- preds_vs_actuals %>%
   pivot_longer(cols = c(MAPE, MAE, RMSE),
                names_to = "errors",
                values_to = "value") 
-
-  suppressMessages()
 
 # accuracy results for NAIVE BENCHMARK MODEL ------
 acc_single_naive <- preds_vs_actuals %>% 
@@ -108,7 +106,7 @@ acc_pool_en %>%
               values_from = value)
 
 
-# average accuracy across all countries 
+# AVERAGE ACCURACY ACROSS COUNTRIES, BY MODELS ------
 acc_pool_en %>% 
   bind_rows(acc_pool_xgb) %>% 
   bind_rows(acc_pool_rf) %>% 
@@ -144,8 +142,9 @@ acc_pool_en %>%
               values_from = increase) %>% 
   filter(errors == "MAPE") %>%
   mutate_if(is.numeric, round, 3) 
-  kbl(caption = "Base-Model Performance Comapred to Historical Mean") %>%
-  kable_classic(full_width = F, html_font = "Times New Roman") 
+  
+  # kbl(caption = "Base-Model Performance Comapred to Historical Mean") %>%
+  # kable_classic(full_width = F, html_font = "Times New Roman") 
 
   # save_kable(file = "table1.html", self_contained = T)
 
@@ -174,8 +173,8 @@ acc_pool_en %>%
             xgb_pool = ((mean - xgb_pool) / xgb_pool) * 100,
             arima_single = ((mean - arima_single) / arima_single) * 100) 
     
-  filter(errors == "MAPE") %>%
-  mutate_if(is.numeric, round, 3) %>% 
-  kbl(caption = "Mean Performance Compared  to Historical Mean") %>%
-  kable_classic(full_width = F, html_font = "Times New Roman") 
-
+  # filter(errors == "MAPE") %>%
+  # mutate_if(is.numeric, round, 3) %>% 
+  # kbl(caption = "Mean Performance Compared  to Historical Mean") %>%
+  # kable_classic(full_width = F, html_font = "Times New Roman") 
+# 
