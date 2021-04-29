@@ -71,27 +71,27 @@ registerDoParallel(cl)
 # 27 sec
 tic_mean <- Sys.time()
 mean_model <- future_map(countries_to_predict,
-                          ~model_mean(.x))
+                         ~model_mean(.x))
 print(toc_mean <- Sys.time() - tic_mean)
 
 mean_fcast <- future_map(seq_len(length(mean_model)),
-                          ~mean_model %>% 
-                            pluck(.x) %>% 
-                            pluck(1) %>% 
-                            forecast(mean_model %>% 
-                                       pluck(.x) %>% 
-                                       pluck(4)) %>% 
-                            as_tsibble(index = date)) %>% 
+                         ~mean_model %>% 
+                           pluck(.x) %>% 
+                           pluck(1) %>% 
+                           forecast(mean_model %>% 
+                                      pluck(.x) %>% 
+                                      pluck(4)) %>% 
+                           as_tsibble(index = date)) %>% 
   reduce(bind_rows)
 
 mean_fitted <- future_map(seq_len(length(mean_model)),
-                           ~mean_model %>% 
-                             pluck(.x) %>% 
-                             pluck(1) %>% 
-                             pull(MEAN) %>%
-                             pluck(1) %>%
-                             .$fit %>%
-                             .$.fitted) %>%
+                          ~mean_model %>% 
+                            pluck(.x) %>% 
+                            pluck(1) %>% 
+                            pull(MEAN) %>%
+                            pluck(1) %>%
+                            .$fit %>%
+                            .$.fitted) %>%
   reduce(c)
 
 
@@ -99,10 +99,10 @@ mean_pred <- mean_fcast %>%
   pull(.mean)
 
 mean_actual <- future_map(seq_len(length(mean_model)),
-                           ~mean_model %>% 
-                             pluck(.x) %>% 
-                             pluck(4) %>% 
-                             pull(cagr_n_year)) %>% 
+                          ~mean_model %>% 
+                            pluck(.x) %>% 
+                            pluck(4) %>% 
+                            pull(cagr_n_year)) %>% 
   reduce(c)
 
 mean_training_to_plot <- future_map(

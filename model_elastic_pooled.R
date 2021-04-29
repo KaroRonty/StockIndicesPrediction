@@ -3,7 +3,6 @@ to_model_elastic <- build.x(~ .,
                             contrasts = FALSE) %>% 
   as_tibble() %>% 
   add_column(date = to_model_mm$date) %>% 
-  # TODO
   mutate_if(is.numeric, ~ifelse(.x == 1000, NA, .x))
 
 model_data_elastic <- make_splits(split_indices, 
@@ -17,10 +16,10 @@ model_test_elastic <- testing(model_data_elastic)
 model_folds_elastic <- model_training_elastic %>% 
   rolling_origin(initial = 2700,
                  assess = 900,
-                 skip = 300, # FIXME 0
+                 skip = 300,
                  lag = 1800)
 
-model_recipe_elastic <- recipe(cagr_n_year ~ # FIXME
+model_recipe_elastic <- recipe(cagr_n_year ~
                                  countryAUSTRALIA + 
                                  countryAUSTRIA + 
                                  countryBELGIUM + 
@@ -63,7 +62,7 @@ model_recipe_elastic <- recipe(cagr_n_year ~ # FIXME
                                  countryUSA + 
                                  cape + 
                                  dividend_yield + 
-                                 rate_10_year + # FIXME
+                                 rate_10_year + 
                                  unemployment +
                                  s_rate_10_year +
                                  cpi, 
@@ -145,13 +144,14 @@ pred_plot_elastic <- preds_vs_actuals %>%
   ggplot(aes(date, value, color = name)) +
   geom_line() + 
   facet_wrap(~country) +
+  scale_color_manual(values = c("black", "#00BFC4")) +
   ggtitle("Elastic Net") +
   xlab("Date") +
   ylab(cagr_name) +
   theme_minimal() +
   theme(legend.position = "none")
 
-importance_elastic <- elastic_model %>% 
+importance_plot_elastic <- elastic_model %>% 
   pull_workflow_fit() %>% 
   vip() +
   ggtitle("Elastic Net") +
@@ -176,5 +176,3 @@ preds_vs_actuals %>%
   summarise_if(is.numeric, median) %>% 
   suppressMessages() %>% 
   print()
-
-

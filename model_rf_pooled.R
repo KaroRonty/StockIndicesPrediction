@@ -63,19 +63,20 @@ training_preds_vs_actuals <- training_preds_vs_actuals %>%
            predict(model_training) %>% 
            pull(.pred))
 
-preds_vs_actuals %>% 
+pred_plot_rf <- preds_vs_actuals %>% 
   pivot_longer(c(actual, rf_pred)) %>% 
   filter(country %in% countries_to_predict) %>% 
   ggplot(aes(date, value, color = name)) +
   geom_line() + 
   facet_wrap(~country) +
+  scale_color_manual(values = c("black", "#00BFC4")) +
   ggtitle("Random Forest") +
   xlab("Date") +
   ylab(cagr_name) +
   theme_minimal() +
   theme(legend.position = "none")
 
-importance_rf <- rf_model %>% 
+importance_plot_rf <- rf_model %>% 
   pull_workflow_fit() %>% 
   vip() +
   ggtitle("Random Forest") +

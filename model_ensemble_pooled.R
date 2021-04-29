@@ -1,30 +1,35 @@
 preds_vs_actuals_ensemble <- preds_vs_actuals %>% 
   filter(country %in% countries_to_predict) %>% 
-  mutate(arima_pred = arima_pred, 
-         .after = "xgboost_pred") %>% 
   group_by_all() %>% 
-  mutate(ensemble_mean_pred = mean(c(rf_pred, 
-                                     elastic_pred, 
-                                     xgboost_pred,
-                                     arima_pred)),
-         ensemble_median_pred = median(c(rf_pred, 
-                                         elastic_pred, 
-                                         xgboost_pred,
-                                         arima_pred))) %>% 
+  mutate(ensemble_mean_pred = mean(c(xgboost_pred,
+                                     rf_pred,
+                                     elastic_pred,
+                                     arima_single_pred,
+                                     xgboost_single_pred,
+                                     rf_single_pred)),
+         ensemble_median_pred = median(c(xgboost_pred,
+                                         rf_pred,
+                                         elastic_pred,
+                                         arima_single_pred,
+                                         xgboost_single_pred,
+                                         rf_single_pred))) %>% 
   ungroup()
 
 training_preds_vs_actuals_ensemble <- training_preds_vs_actuals %>% 
   filter(country %in% countries_to_predict) %>% 
-  mutate(arima_pred = arima_fitted, 
-         .after = "xgboost_pred") %>% 
   group_by_all() %>% 
-  mutate(ensemble_mean_pred = mean(c(rf_pred, 
-                                     elastic_pred, 
-                                     xgboost_pred,
-                                     arima_pred)),
-         ensemble_median_pred = median(c(rf_pred, 
-                                         elastic_pred, 
-                                         xgboost_pred))) %>% 
+  mutate(ensemble_mean_pred = mean(c(xgboost_pred,
+                                     rf_pred,
+                                     elastic_pred,
+                                     arima_single_pred,
+                                     xgboost_single_pred,
+                                     rf_single_pred)),
+         ensemble_median_pred = median(c(xgboost_pred,
+                                         rf_pred,
+                                         elastic_pred,
+                                         arima_single_pred,
+                                         xgboost_single_pred,
+                                         rf_single_pred))) %>% 
   ungroup()
 
 pred_plot_ensemble_mean <- preds_vs_actuals_ensemble %>% 
@@ -33,6 +38,7 @@ pred_plot_ensemble_mean <- preds_vs_actuals_ensemble %>%
   ggplot(aes(date, value, color = name)) +
   geom_line() + 
   facet_wrap(~country) +
+  scale_color_manual(values = c("black", "#00BFC4")) +
   ggtitle("Ensemble model (mean)") +
   xlab("Date") +
   ylab(cagr_name) +
@@ -51,11 +57,13 @@ pred_plot_ensemble_median <- preds_vs_actuals_ensemble %>%
   theme_minimal() +
   theme(legend.position = "none")
 
-importance_ensemble <- tibble(feature = c("xgboost", 
-                                          "rf", 
-                                          "elastic", 
-                                          "arima"),
-                              Importance = rep(1/4, 4)) %>% 
+importance_plot_ensemble <- tibble(feature = c("xgboost",
+                                               "rf",
+                                               "elastic",
+                                               "arima",
+                                               "xgboost_single",
+                                               "rf_single"),
+                                   Importance = rep(1 / 6, 6)) %>% 
   ggplot(aes(Importance, reorder(feature, Importance))) +
   geom_col() +
   labs(title = "Ensemble models",
@@ -86,4 +94,3 @@ preds_vs_actuals_ensemble %>%
   summarise_if(is.numeric, mean) %>% 
   suppressMessages() %>% 
   print()
-

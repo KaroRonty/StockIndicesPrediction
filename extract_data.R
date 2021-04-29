@@ -145,7 +145,6 @@ cap_long <- cap_long %>%
 
 # Create sets
 # Join variables
-# FIXME
 to_model_exploration <- map(dfs, ~get(.x)) %>% 
   reduce(full_join) %>% 
   full_join(prices_local_long) %>% 

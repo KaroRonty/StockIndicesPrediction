@@ -8,16 +8,13 @@ cl <- makePSOCKcluster(parallel::detectCores())
 registerDoParallel(cl)
 
 to_stack <- training_preds_vs_actuals %>% 
+  na.omit() %>% 
   mutate(set = "training") %>% 
-  full_join(split_indices_df %>% 
-              select(date, actual = cagr_n_year, set) %>% 
-              filter(set == "leakage")) %>% 
   bind_rows(preds_vs_actuals %>% 
+              na.omit() %>% 
               mutate(set = "test")) %>% 
   rename_with(~str_remove(.x, "_pred")) %>% 
-  rename(cagr_n_year = actual) %>% 
-  filter(country %in% countries_to_predict) %>% 
-  mutate(arima = c(arima_fitted, arima_pred), .after = "xgboost")
+  rename(cagr_n_year = actual)
 
 split_indices_df_stack <- to_stack %>%  
   mutate(.row = row_number())
@@ -42,14 +39,22 @@ stack_test <- testing(stack_data)
 stack_folds <- stack_training %>% 
   rolling_origin(initial = 355 * 3,
                  assess = 355,
-                 skip = 0, # FIXME 0
+                 skip = 0,
                  lag = 0)
 
-stack_recipe <- recipe(cagr_n_year ~ 
-                         xgboost +
-                         rf +
-                         elastic +
-                         arima,
+# FIXME
+# rolling_origin(initial = 12 * 7,
+#                assess = 12 * 2,
+#                skip = 12 * 1, # FIXME 0
+#                lag = 12 * 5)
+
+stack_recipe <- recipe(cagr_n_year ~
+                         xgboost + 
+                         rf + 
+                         elastic + 
+                         arima_single + 
+                         xgboost_single +
+                         rf_single, 
                        data = stack_training) %>% 
   step_center(all_predictors()) %>% 
   step_scale(all_predictors())
@@ -58,8 +63,11 @@ set.seed(1)
 stack_grid <- grid_latin_hypercube(
   penalty(),
   mixture(),
-  size = 100) %>% # FIXME
-  mutate_if(is.integer, as.numeric)
+  size = 100) %>% 
+  mutate_if(is.integer, as.numeric) %>% 
+  mutate(mixture = case_when(mixture == min(mixture) ~ 0,
+                             mixture == max(mixture) ~ 1,
+                             TRUE ~ mixture))
 
 # Hyperparameter ranges
 stack_grid %>% 
@@ -119,13 +127,14 @@ pred_plot_stack <- preds_vs_actuals_stack %>%
   ggplot(aes(date, value, color = name)) +
   geom_line() + 
   facet_wrap(~country) +
+  scale_color_manual(values = c("black", "#00BFC4")) +
   ggtitle("Stacked model") +
   xlab("Date") +
   ylab(cagr_name) +
   theme_minimal() +
   theme(legend.position = "none")
 
-importance_stack <- stack_model$fit$fit$fit %>% 
+importance_plot_stack <- stack_model$fit$fit$fit %>% 
   coef(s = stack_model$fit$fit$spec$args$penalty) %>% 
   as.matrix() %>% 
   as.data.frame() %>% 
