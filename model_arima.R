@@ -1,3 +1,5 @@
+# TODO fix leakage
+
 to_model_arima_temp <- build.x(~ .,
                                data = to_model_mm[, -1:-2],
                                contrasts = FALSE) %>% 
