@@ -24,7 +24,7 @@ add_return_columns <- function(df, ll){
   col_name <- paste0("return_", ll, "_month")
   
   df %>% 
-    mutate(!!col_name := 1 + (price - lag(price, ll)) / lag(price, ll))
+    mutate(!!col_name := price / lag(price))
 }
 
 # Computed separately due to lack of visibility inside a nested function
@@ -35,7 +35,7 @@ prices_local_long <- suppressMessages(
 
 # Computed separately due to lack of visibility inside a nested function
 prices_local_long <- suppressMessages(
-  map(c(1,12,60),
+  map(c(1 , 12, 60),
       ~add_return_columns(prices_local_long, .x)) %>% 
     reduce(inner_join))
 
