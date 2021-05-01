@@ -83,11 +83,13 @@ cagr_return_comparison %>% color(6)
 
 monthly_returns_strategy_cum_to_plot <- monthly_returns_strategy_cum %>% 
   inner_join(cagr_return_comparison) %>% 
+  filter(!(model %in% c("mean_prediction", "naive_prediction"))) %>% 
   mutate(outperformed = last(strategy) > last(benchmark)) %>% 
   mutate(model_and_cagr = model %>% 
            factor(levels = cagr_return_comparison %>% 
                     pull(model)) %>% 
-           fct_relabel(~str_remove(.x, "_prediction|_pred"))) %>% 
+           fct_relabel(~str_remove(.x, "_prediction|_pred")),
+         strategy_return_cum = strategy_return_cum * 100) %>% 
   suppressMessages()
 
 p_cum <- monthly_returns_strategy_cum_to_plot %>% 
@@ -98,9 +100,13 @@ p_cum <- monthly_returns_strategy_cum_to_plot %>%
             data = equal_weight_monthly_return_cum %>% 
               filter(date <= monthly_returns_strategy_cum_to_plot %>% 
                        pull(date) %>% 
-                       max())) +
+                       max()) %>% 
+              mutate(equal_weight_return_cum = equal_weight_return_cum * 100)) +
   facet_wrap(~model_and_cagr) + 
+  # geom_hline(yintercept = 100, linetype = "dashed", color = "gray") +
   scale_x_yearmonth(guide = guide_axis(n.dodge = 2)) +
+  scale_y_continuous(breaks = seq(80, 200, 20),
+                     labels = seq(80, 200, 20)) +
   scale_color_discrete(name = "Outperformed benchmark",
                        breaks = c(TRUE, FALSE),
                        labels = c("Yes", "No")) +
