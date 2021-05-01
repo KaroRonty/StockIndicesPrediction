@@ -55,7 +55,7 @@ model_acc %>%
 # GROUPED MODEL ACCURACY BY MODEL -----
 model_acc %>% 
   group_by(errors, model) %>% 
-  summarise(mean = mean(value)) %>% 
+  summarise(mean = median(value)) %>% 
   pivot_wider(values_from = mean,
               names_from = errors) %>% 
   arrange(MAPE) 
@@ -63,7 +63,7 @@ model_acc %>%
 
 model_acc %>% 
   group_by(errors, country) %>% 
-  summarise(mean = mean(value)) %>% 
+  summarise(mean = median(value)) %>% 
   pivot_wider(values_from = mean,
               names_from = errors) %>% 
   arrange(MAPE)
@@ -98,7 +98,7 @@ model_acc %>%
   ungroup() %>% 
   filter(errors == "MAPE") %>% 
   group_by(country) %>% 
-  summarise_if(is.numeric, mean) %>% 
+  summarise_if(is.numeric, median) %>% 
   mutate_if(is.numeric, round, 3) %>% 
   select(country, xgboost, rf, elastic, arima_single, xgboost_single, rf_single) %>% 
   bind_rows(
@@ -112,8 +112,8 @@ model_acc %>%
       filter(errors == "MAPE") %>% 
       ungroup() %>% 
       group_by(base_models) %>% 
-      summarise(value = mean(value),
-                increase = mean(((mean_prediction - value) / value) * 100)) %>% 
+      summarise(value = median(value),
+                increase = median(((mean_prediction - value) / value) * 100)) %>% 
       select(base_models, increase) %>% 
       pivot_wider(names_from = base_models,
                   values_from = increase) %>% 
@@ -151,11 +151,11 @@ model_acc %>%
     model_acc %>% 
       filter(errors == "MAPE") %>%
       group_by(model) %>% 
-      summarise(mean_MAPE = mean(value)) %>% 
+      summarise(mean_MAPE = median(value)) %>% 
       pivot_wider(values_from = mean_MAPE,
                   names_from = model) %>% 
       select(stack_pred, ensemble_mean_pred, ensemble_median_pred) %>% 
-      mutate(country = "AVERAGE")
+      mutate(country = "MEDIAN")
   ) %>% 
   select(-errors) %>% 
   rename("Stacking" = stack_pred,
@@ -182,7 +182,7 @@ model_acc %>%
   ungroup() %>% 
   filter(errors == "MAPE") %>% 
   group_by(country) %>% 
-  summarise_if(is.numeric, mean) %>% 
+  summarise_if(is.numeric, median) %>% 
   mutate_if(is.numeric, round, 3) %>% 
   bind_rows(
     model_acc %>% 
@@ -195,15 +195,15 @@ model_acc %>%
       filter(errors == "MAPE") %>% 
       ungroup() %>% 
       group_by(ensemble_models) %>% 
-      summarise(value = mean(value),
-                increase = mean(((mean_prediction - value) / value) * 100)) %>% 
+      summarise(value = median(value),
+                increase = median(((mean_prediction - value) / value) * 100)) %>% 
       select(ensemble_models, increase) %>% 
       pivot_wider(names_from = ensemble_models,
                   values_from = increase) %>% 
       ungroup() %>% 
-      summarise_if(is.numeric, mean) %>% 
+      summarise_if(is.numeric, median) %>% 
       mutate_if(is.numeric, round, 3) %>% 
-      mutate(country = "AVERAGE")
+      mutate(country = "MEDIAN")
   ) %>% 
   select(country, stack_pred, ensemble_mean_pred, ensemble_median_pred) %>% 
   rename("Stacking" = stack_pred,
@@ -225,7 +225,7 @@ key <- c(AUSTRALIA = "AUS",
          SWITZERLAND = "CHE",
          UK = "GBR",
          USA = "USA",
-         AVERAGE = "AVG")
+         MEDIAN = "MED")
 
 model_acc %>% 
   pivot_wider(values_from = value,
@@ -236,10 +236,10 @@ model_acc %>%
     model_acc %>% 
       filter(errors == "MAPE") %>%
       group_by(model) %>% 
-      summarise(mean_MAPE = mean(value)) %>% 
+      summarise(mean_MAPE = median(value)) %>% 
       pivot_wider(values_from = mean_MAPE,
                   names_from = model) %>%
-      mutate(country = "AVERAGE")
+      mutate(country = "MEDIAN")
   ) %>% 
   select(-errors) %>% 
   rename("Country" = country,
@@ -281,7 +281,7 @@ model_acc %>%
   ungroup() %>% 
   filter(errors == "MAPE") %>% 
   group_by(country) %>% 
-  summarise_if(is.numeric, mean) %>% 
+  summarise_if(is.numeric, median) %>% 
   mutate_if(is.numeric, round, 3) %>% 
   bind_rows(
     model_acc %>% 
@@ -294,15 +294,15 @@ model_acc %>%
       filter(errors == "MAPE") %>% 
       ungroup() %>% 
       group_by(models) %>% 
-      summarise(value = mean(value),
-                increase = mean(((mean_prediction - value) / value) * 100)) %>% 
+      summarise(value = median(value),
+                increase = median(((mean_prediction - value) / value) * 100)) %>% 
       select(models, increase) %>% 
       pivot_wider(names_from = models,
                   values_from = increase) %>% 
       ungroup() %>% 
-      summarise_if(is.numeric, mean) %>% 
+      summarise_if(is.numeric, median) %>% 
       mutate_if(is.numeric, round, 3) %>% 
-      mutate(country = "AVERAGE")
+      mutate(country = "MEDIAN")
   ) %>% 
   rename("Country" = country,
          "XGB_pool" = xgboost,
