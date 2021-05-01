@@ -32,8 +32,8 @@ model_acc %>%
     model_acc %>% 
       filter(errors == "MAPE") %>%
       group_by(model) %>% 
-      summarise(mean_MAPE = median(value)) %>% 
-      pivot_wider(values_from = mean_MAPE,
+      summarise(median_MAPE = median(value)) %>% 
+      pivot_wider(values_from = median_MAPE,
                   names_from = model) %>% 
       select(-stack_pred, -ensemble_mean_pred, -ensemble_median_pred, 
              -mean_prediction, -naive_prediction) %>% 
@@ -55,16 +55,16 @@ model_acc %>%
 # GROUPED MODEL ACCURACY BY MODEL -----
 model_acc %>% 
   group_by(errors, model) %>% 
-  summarise(mean = median(value)) %>% 
-  pivot_wider(values_from = mean,
+  summarise(median = median(value)) %>% 
+  pivot_wider(values_from = median,
               names_from = errors) %>% 
   arrange(MAPE) 
   
 
 model_acc %>% 
   group_by(errors, country) %>% 
-  summarise(mean = median(value)) %>% 
-  pivot_wider(values_from = mean,
+  summarise(median = median(value)) %>% 
+  pivot_wider(values_from = median,
               names_from = errors) %>% 
   arrange(MAPE)
 
@@ -118,7 +118,7 @@ model_acc %>%
       pivot_wider(names_from = base_models,
                   values_from = increase) %>% 
       ungroup() %>% 
-      summarise_if(is.numeric, mean) %>% 
+      summarise_if(is.numeric, median) %>% 
       mutate_if(is.numeric, round, 3) %>% 
       mutate(country = "AVERAGE")
   ) %>% 
@@ -151,8 +151,8 @@ model_acc %>%
     model_acc %>% 
       filter(errors == "MAPE") %>%
       group_by(model) %>% 
-      summarise(mean_MAPE = median(value)) %>% 
-      pivot_wider(values_from = mean_MAPE,
+      summarise(median_MAPE = median(value)) %>% 
+      pivot_wider(values_from = median_MAPE,
                   names_from = model) %>% 
       select(stack_pred, ensemble_mean_pred, ensemble_median_pred) %>% 
       mutate(country = "MEDIAN")
@@ -236,8 +236,8 @@ model_acc %>%
     model_acc %>% 
       filter(errors == "MAPE") %>%
       group_by(model) %>% 
-      summarise(mean_MAPE = median(value)) %>% 
-      pivot_wider(values_from = mean_MAPE,
+      summarise(median_MAPE = median(value)) %>% 
+      pivot_wider(values_from = median_MAPE,
                   names_from = model) %>%
       mutate(country = "MEDIAN")
   ) %>% 
