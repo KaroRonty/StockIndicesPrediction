@@ -1,10 +1,9 @@
+rebalancing_frequency <- "1 year"
 n_countries_to_invest_in <- 4
 
-investing_dates <- c("2005 Aug",
-                     "2010 Aug",
-                     "2015 Aug",
-                     # Needs one extra for it to work
-                     "2020 Aug") %>% 
+investing_dates <- seq.Date(as_date(yearmonth("2005 Aug")),
+                            as_date(yearmonth("2020 Aug")),
+                            rebalancing_frequency) %>% 
   yearmonth()
 
 years_in_data <- (last(investing_dates) - first(investing_dates)) / 12
@@ -96,14 +95,19 @@ p_cum <- monthly_returns_strategy_cum_to_plot %>%
   geom_line() +
   geom_line(aes(date, equal_weight_return_cum),
             inherit.aes = FALSE,
-            data = equal_weight_monthly_return_cum) +
+            data = equal_weight_monthly_return_cum %>% 
+              filter(date <= monthly_returns_strategy_cum_to_plot %>% 
+                       pull(date) %>% 
+                       max())) +
   facet_wrap(~model_and_cagr) + 
   scale_x_yearmonth(guide = guide_axis(n.dodge = 2)) +
   scale_color_discrete(name = "Outperformed benchmark",
                        breaks = c(TRUE, FALSE),
                        labels = c("Yes", "No")) +
   labs(title = "Returns of strategies based on models (colored) vs benchmark (black)",
-       subtitle = paste0("Ordered from best to worst performance"),
+       subtitle = paste0("Rebalancing frequency of ",
+                         rebalancing_frequency),
+       caption = "Ordered from best to worst performance",
        x = NULL,
        y = "Cumulative return over the whole test period") +
   theme_minimal() +
