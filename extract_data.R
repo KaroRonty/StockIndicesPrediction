@@ -21,7 +21,7 @@ add_cagr_columns <- function(df, lead){
 
 # Function for making monthly returns
 add_return_columns <- function(df, ll){
-  col_name <- paste0("return_", ll, "_month")
+  col_name <- paste0("return_next_", ll, "_month")
   
   df %>% 
     mutate(!!col_name := price / lag(price))
