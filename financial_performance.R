@@ -112,7 +112,10 @@ p_cum <- monthly_returns_strategy_cum_to_plot %>%
                        labels = c("Yes", "No")) +
   labs(title = "Returns of strategies based on models (colored) vs benchmark (black)",
        subtitle = paste0("Rebalancing frequency of ",
-                         rebalancing_frequency),
+                         rebalancing_frequency,
+                         ", investing in ",
+                         n_countries_to_invest_in,
+                         " out of 8 countries"),
        caption = "Ordered from best to worst performance",
        x = NULL,
        y = "Cumulative return over the whole test period") +
