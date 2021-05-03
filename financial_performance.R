@@ -3,16 +3,14 @@ library(kableExtra)
 library(PerformanceAnalytics)
 
 n_countries_to_invest_in <- 3
-rebalancing_frequencies <- 1:5 # TODO
+n_rebalances <- c(1, 2, 3)
 plot_max_date <- "2020 Aug"
 
-evaluate_financial_performance <- function(rebalancing_frequency){
-  
-  rebalancing_frequency <- paste(rebalancing_frequency, "years")
+evaluate_financial_performance <- function(n_rebalance){
   
   investing_dates <- seq.Date(as_date(yearmonth("2005 Aug")),
                               as_date(yearmonth("2020 Aug")), 
-                              by = rebalancing_frequency) %>% 
+                              length.out = n_rebalance + 1) %>% 
     yearmonth()
   
   years_in_data <- investing_dates %>% 
@@ -82,7 +80,7 @@ evaluate_financial_performance <- function(rebalancing_frequency){
     pivot_longer(everything(),
                  names_to = "model",
                  values_to = "Sharpe") %>%
-    mutate(rebalance_freq = rebalancing_frequency) %>%
+    mutate(rebalance_freq = n_rebalance) %>%
     arrange(-Sharpe) %>% 
     suppressMessages()
   
@@ -128,7 +126,7 @@ evaluate_financial_performance <- function(rebalancing_frequency){
     arrange(date) %>%
     mutate(outperformed = last(strategy) > last(benchmark),
            strategy_return_cum = strategy_return_cum * 100) %>%
-    mutate(rebalance_freq = rebalancing_frequency) %>% 
+    mutate(rebalance_freq = n_rebalance) %>% 
     full_join(sharpes) %>% 
     left_join(equal_weight_monthly_return_cum %>% 
                 select(date, benchmark_cum = equal_weight_return_1_month) %>% 
@@ -136,7 +134,7 @@ evaluate_financial_performance <- function(rebalancing_frequency){
     suppressMessages()
 }
 
-performances <- map(rebalancing_frequencies,
+performances <- map(n_rebalances,
                     evaluate_financial_performance) %>% 
   bind_rows()
 
@@ -207,10 +205,12 @@ to_table <- preds_vs_actuals %>%
   ungroup() %>% 
   group_by(Model) %>% 
   summarise(`Median MAPE` = median(MAPE)) %>% 
-  full_join(returns_per_rebalancing %>% 
-              select(Model = model, CAGR = 2)) %>% 
+  full_join(returns_per_rebalancing %>%
+              rename_with(~paste("CAGR", .x, "rebalances")) %>% 
+              rename(Model = 1)) %>% 
   full_join(sharpes_to_table %>% 
-              select(Model = model, Sharpe = 2)) %>% 
+              rename_with(~paste("Sharpe", .x, "rebalances")) %>% 
+              rename(Model = 1)) %>% 
   mutate(Model = Model %>% 
            str_remove("_prediction|_pred") %>% 
            str_replace("_", " ") %>% 
@@ -220,28 +220,33 @@ to_table <- preds_vs_actuals %>%
            str_replace("XGBOOST", "XGBoost") %>% 
            str_replace("ELASTIC", "Elastic Net")) %>% 
   mutate(`Median MAPE` = scales::number(`Median MAPE` * 100, 0.001) %>% 
-           replace_na(""),
-         CAGR = scales::percent(CAGR - 1, 0.001, suffix = ""),
-         Sharpe = scales::number(Sharpe, 0.001))
-
+           replace_na("")) %>% 
+  mutate_at(vars(starts_with("CAGR")),
+            ~scales::percent(.x - 1, 0.001, suffix = "")) %>% 
+  mutate_at(vars(starts_with("Sharpe")),
+            ~scales::number(.x, 0.001))
 
 # sharpes_per_rebalancing <- performances %>% 
-
 to_table %>% 
+  rename_at(vars(contains("Sharpe")), 
+            ~str_replace(.x, "balances", "balances ")) %>% 
+  rename_with(~str_remove(.x, "CAGR |Sharpe ")) %>% 
   kable(
     caption = 
-      "<center><b>
-    Financial and non-financial measures
-    </b></center>") %>% 
-  kable_styling()
+      "Financial and non-financial measures by rebalancing period") %>% 
+  kable_classic_2() %>% 
+  add_header_above(c(" " = 2, 
+                     "CAGR" = 3,
+                     "Sharpe" = 3))
 
 p_cum <- performance_to_plot %>%
-  filter(!(model_and_cagr %in% c("naive", "elastic"))) %>% 
+  filter(!(model_and_cagr %in% c("naive", "mean"))) %>% 
   filter(!is.na(model_and_cagr)) %>%
   ggplot(aes(date, 
              strategy_return_cum, 
-             color = outperformed, 
-             group = rebalance_freq)) +
+             color = factor(rebalance_freq), 
+             group = factor(rebalance_freq)
+             )) +
   geom_line() +
   geom_line(aes(date, benchmark_cum),
             inherit.aes = FALSE,
@@ -249,21 +254,22 @@ p_cum <- performance_to_plot %>%
               ungroup() %>% 
               select(date, benchmark_cum) %>% 
               distinct()) +
-  facet_wrap(~model_and_cagr, scales = "free_y") + 
+  facet_wrap(~model_and_cagr) + 
   # geom_hline(yintercept = 100, linetype = "dashed", color = "gray") +
   scale_x_yearmonth(guide = guide_axis(n.dodge = 2)) +
-  scale_y_continuous(breaks = seq(80, 300, 20),
-                     labels = seq(80, 300, 20)) +
-  scale_color_discrete(name = "Outperformed benchmark",
-                       breaks = c(TRUE, FALSE),
-                       labels = c("Yes", "No")) +
+  scale_y_continuous(breaks = seq(50, 300, 50),
+                     labels = seq(50, 300, 50)) +
+  scale_color_discrete(name = "Number of rebalances") +
+  # scale_color_discrete(name = "Outperformed benchmark",
+  #                      breaks = c(TRUE, FALSE),
+  #                      labels = c("Yes", "No")) +
   labs(
     title = 
       "Returns of strategies based on models (colored) vs benchmark (black)",
     subtitle = paste0("Investing in ",
                       n_countries_to_invest_in,
                       " out of 8 countries"),
-    caption = "Ordered from best to worst average performance",
+    caption = "Ordered from best to worst average performance by model",
     x = NULL,
     y = "Cumulative return over the whole test period") +
   theme_minimal() +
