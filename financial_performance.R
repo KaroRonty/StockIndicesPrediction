@@ -148,7 +148,14 @@ performance_to_plot <- performances %>%
                summarise(avg_cum_return = mean(strategy_return_cum)) %>% 
                arrange(-avg_cum_return) %>% 
                pull(model)) %>% 
-           fct_relabel(~str_remove(.x, "_prediction|_pred")))
+           fct_relabel(~.x %>% 
+                         str_remove("_prediction|_pred") %>% 
+                         str_replace("_", " ") %>% 
+                         toupper() %>% 
+                         str_replace("SINGLE", "single") %>% 
+                         str_replace("RF", "Random Forest") %>% 
+                         str_replace("XGBOOST", "XGBoost") %>% 
+                         str_replace("ELASTIC", "Elastic Net")))
 
 sharpes_to_plot <- performance_to_plot %>% 
   ungroup() %>% 
@@ -227,7 +234,11 @@ to_table <- preds_vs_actuals %>%
             ~scales::number(.x, 0.001))
 
 # sharpes_per_rebalancing <- performances %>% 
+# sharpes_per_rebalancing <- performances %>% 
 to_table %>% 
+  slice(1, 2, 7, 8, 10, 11,
+        3, 4, 9,
+        5, 6, 12) %>% 
   rename_at(vars(contains("Sharpe")), 
             ~str_replace(.x, "balances", "balances ")) %>% 
   rename_with(~str_remove(.x, "CAGR |Sharpe ")) %>% 
@@ -237,10 +248,20 @@ to_table %>%
   kable_classic_2() %>% 
   add_header_above(c(" " = 2, 
                      "CAGR" = 3,
-                     "Sharpe" = 3))
+                     "Sharpe" = 3)) %>% 
+  row_spec(
+    6,
+    extra_css = "border-bottom: 1px solid; border-bottom-color: lightgray") %>%
+  row_spec(
+    9,
+    extra_css = "border-bottom: 1px solid; border-bottom-color: lightgray") %>%
+  row_spec(
+    11,
+    extra_css = "border-bottom: 1px solid; border-bottom-color: lightgray") %>%
+  print()
 
 p_cum <- performance_to_plot %>%
-  filter(!(model_and_cagr %in% c("naive", "mean"))) %>% 
+  filter(!(model_and_cagr %in% c("NAIVE", "MEAN"))) %>% 
   filter(!is.na(model_and_cagr)) %>%
   ggplot(aes(date, 
              strategy_return_cum, 
