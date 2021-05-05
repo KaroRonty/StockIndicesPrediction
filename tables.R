@@ -1,3 +1,4 @@
+library(kableExtra)
 
 # DATA SET-UP
 model_set <- c("xgboost", "rf", "elastic", "arima_single", "xgboost_single", "rf_single", 
@@ -234,14 +235,15 @@ model_acc %>%
   bind_rows(
     # AVERAGE MAPE PER MODEL
     model_acc %>% 
-      filter(errors == "MAPE") %>%
+      filter(errors == "MAPE",
+             country != "SPAIN") %>%
       group_by(model) %>% 
       summarise(median_MAPE = median(value)) %>% 
       pivot_wider(values_from = median_MAPE,
                   names_from = model) %>%
       mutate(country = "MEDIAN")
   ) %>% 
-  select(-errors) %>% 
+  select(-errors) %>%
   rename("Country" = country,
          "XGB_pool" = xgboost,
          "RF_pool" = rf,
@@ -261,7 +263,7 @@ model_acc %>%
   add_header_above(c(" " = 1, "Base" = 6, "Meta" = 3, " " = 2)) %>% 
   column_spec(1, bold = T, border_right = T) %>% 
   column_spec(7, border_right = T) %>% 
-  column_spec(10, border_right = T) %>% 
+  column_spec(9, border_right = T) %>% 
   row_spec(9, bold = T, color = "black", background = "#DCDCDC")
 
 
@@ -279,7 +281,8 @@ model_acc %>%
   pivot_wider(names_from = models,
               values_from = increase) %>% 
   ungroup() %>% 
-  filter(errors == "MAPE") %>% 
+  filter(errors == "MAPE",
+         country != "SPAIN") %>% 
   group_by(country) %>% 
   summarise_if(is.numeric, median) %>% 
   mutate_if(is.numeric, round, 3) %>% 
@@ -291,7 +294,8 @@ model_acc %>%
       pivot_longer(cols = c(3:11),
                    names_to = "models",
                    values_to = "value") %>%
-      filter(errors == "MAPE") %>% 
+      filter(errors == "MAPE",
+             country != "SPAIN") %>% 
       ungroup() %>% 
       group_by(models) %>% 
       summarise(value = median(value),
@@ -315,7 +319,6 @@ model_acc %>%
          "Mean_ens" = ensemble_mean_pred,
          "Median_ens" = ensemble_median_pred) %>% 
   select(Country, XGB_pool, RF_pool, EN_pool, ARIMA, XGB_s, RF_s, Stacking, Mean_ens, Median_ens) %>% 
-  mutate_at(c("Country"), funs(recode(., !!!key))) %>% 
   kbl(caption = "Improvement in MAPE comapred to Mean Forecast", digits = 2, align = "c") %>%
   kable_classic(full_width = F, html_font = "Cambria") %>% 
   add_header_above(c(" " = 1, "Pooled" = 3, "Single-Country" = 3, "Ensembles" = 3)) %>%
@@ -323,7 +326,9 @@ model_acc %>%
   column_spec(1, bold = T, border_right = T) %>% 
   column_spec(7, border_right = T) %>% 
   # column_spec(10, border_right = T) %>% 
-  row_spec(9, bold = T, color = "black", background = "#DCDCDC")
+  row_spec(8, bold = T, color = "black", background = "#DCDCDC")
+
+acc_benchmark_all <- cell_spec(acc_benchmark_all[1,2], "latex", underline = T)
 
 
   
