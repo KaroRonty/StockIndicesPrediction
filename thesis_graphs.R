@@ -31,7 +31,7 @@ plot_segmentation <- arima_fcast %>%
             aes(color = "Actual")) +
   
   
-  labs(title = "Data Segmentation Process for U.K.",
+  labs(title = "Data Segmentation Process for U.K. using DR with ARIMA errors",
        subtitle = "Using CAGR as a target requires the implementation of a 5-year leakage set",
        x = "Year",
        y = "5-year CAGR",
@@ -45,8 +45,9 @@ plot_segmentation <- arima_fcast %>%
   theme_bw() +
   theme(legend.position = "bottom", legend.box = "horizontal") +
   guides(colour = guide_legend(nrow = 1))
-  
 
+ggsave("Data_Showing Data Structures.png", path = "Plots", 
+       width = 10, height = 6, dpi = 300)
 
 # GRAPH: DETAILLED FITTING PROCESS
 
@@ -262,15 +263,14 @@ prices_local_long %>%
 preds_vs_actuals %>% 
   filter(country %in% countries_to_predict,
          country != "SPAIN") %>% 
-  pivot_longer(cols = c("actual", "xgboost_pred", "rf_pred", "elastic_pred", "arima_single"),
+  pivot_longer(cols = c("actual", "xgboost_pred", "rf_pred", "elastic_pred", 
+                        "xgboost_single_pred","rf_single_pred", "arima_single_pred"),
                names_to = "models",
                values_to = "cagr") %>% 
-  ggplot(aes(date, cagr, colour = models)) +
+  ggplot(aes(date, cagr, colour = models, linetype = models, size = models)) +
   geom_line() +
-  geom_hline(yintercept = 1, colour = "red", linetype = "dashed") + 
-  facet_wrap(~country) +
+  facet_wrap(~country, nrow = 4) +
   labs(title = "Prediction Comparison among base-models",
-       subtitle = "Machine Learning models using pooling show the best fit, while ARIMA tends to over- or underestimate",
        colour = "Base Models",
        x = "Year",
        y = "5-Year CAGR") +
@@ -279,19 +279,35 @@ preds_vs_actuals %>%
                                 "xgboost_pred" = "#1B9E77", # dark turq
                                 "rf_pred" = "#D95F02", # orange brown
                                 "elastic_pred" = "#E7298A", # magenta
-                                "arima_pred" = "#7570B3")) + # dark violett
+                                "xgboost_single_pred" = "#1B9E77", # dark turq
+                                "rf_single_pred" = "#D95F02", # orange brown
+                                "arima_single_pred" = "#7570B3")) + # dark violett
+  scale_linetype_manual(values = c("actual" = "solid", 
+                                   "xgboost_pred" = "solid", # dark turq
+                                   "rf_pred" = "solid", # orange brown
+                                   "elastic_pred" = "solid", # magenta
+                                   "xgboost_single_pred" = "dashed",
+                                   "rf_single_pred" = "dashed",
+                                   "arima_single_pred" = "dashed")) +
+  scale_size_manual(values = c("actual" = 0.7, 
+                               "xgboost_pred" = 0.5, # dark turq
+                               "rf_pred" = 0.5, # orange brown
+                               "elastic_pred" = 0.5, # magenta
+                               "xgboost_single_pred" = 0.5,
+                               "rf_single_pred" = 0.5,
+                               "arima_single_pred" = 0.5)) +
     theme_bw() +
   theme(legend.position = "bottom", legend.box = "horizontal",
         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
   guides(colour = guide_legend(nrow = 2))
 
 ggsave("Results_Base Model and Predictive Performance.png", path = "Plots", 
-       width = 8, height = 12, dpi = 300)
+       width = 10, height = 12, dpi = 300)
 
 # GRAPH CORRELATION BETWEEN BASE FORECASTS
 preds_vs_actuals %>% 
   filter(country %in% countries_to_predict) %>% 
-  GGally::ggpairs(columns = 3:7)
+  GGally::ggpairs(columns = 3:9)
 
 
 # STACKED AND ENSEMBLE FORECASTS -----
@@ -304,8 +320,12 @@ preds_vs_actuals %>%
   ggplot(aes(date, pred, colour = model)) +
   geom_line() +
   facet_wrap(~country, nrow = 4) +
+  labs(title = "Prediction Comparison among ensemble and stacking models",
+       colour = "Meta Models",
+       x = "Year",
+       y = "5-Year CAGR") +
   scale_x_yearquarter() +
-  scale_color_manual(values = c("actual" = "black", 
+    scale_color_manual(values = c("actual" = "black", 
                                 "ensemble_mean_pred" = "#1B9E77", # dark turq
                                 "ensemble_median_pred" = "#E7298A", # magenta
                                 "stack_pred" = "#D95F02")) + # dark violett
@@ -315,12 +335,11 @@ preds_vs_actuals %>%
   guides(colour = guide_legend(nrow = 1))
 
 ggsave("Results_Ensembles and Predictive Performance.png", path = "Plots", 
-       width = 8, height = 12, dpi = 300)
+       width = 10, height = 12, dpi = 300)
 
 
 # GRAPH CORRELATION BETWEEN ENSEMBLE AND STACKED FORECASTS 
-preds_vs_actuals_ensemble %>% 
-  left_join(preds_vs_actuals_stack %>% select(date, country, stack_pred)) %>% 
+preds_vs_actuals %>% 
   select(date, country, actual, ensemble_mean_pred, ensemble_median_pred, stack_pred) %>%
   filter(country %in% countries_to_predict) %>% 
   GGally::ggpairs(columns = 3:6)
