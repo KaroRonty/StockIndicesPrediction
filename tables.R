@@ -1,7 +1,7 @@
 library(kableExtra)
 
 # DATA SET-UP
-model_set <- c("xgboost", "rf", "elastic", "arima_single", "xgboost_single", "rf_single", 
+model_set <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_single_pred", "xgboost_single_pred", "rf_single_pred", 
                "stack_pred", "ensemble_mean_pred", "ensemble_median_pred", 
                "mean_prediction", "naive_prediction")
 
@@ -12,7 +12,7 @@ model_acc <- map(model_set, ~preds_vs_actuals %>%
       summarise(
         MAPE = median(abs(((actual) - !!as.name(paste(.x))) / actual)),
         MAE = mean(abs(actual - !!as.name(paste(.x)))),
-        RMSE = sqrt(sum((!!as.name(paste(.x)) - actual)^2) / 121)) %>% 
+        RMSE = sqrt(mean((!!as.name(paste(.x)) - actual)^2))) %>% 
       mutate(model = !!paste(.x)) %>% 
       pivot_longer(cols = c(MAPE, MAE, RMSE),
                    names_to = "errors",
@@ -231,11 +231,12 @@ key <- c(AUSTRALIA = "AUS",
 model_acc %>% 
   pivot_wider(values_from = value,
               names_from = model) %>% 
-  filter(errors == "MAPE") %>% 
+  filter(errors == "RMSE",
+         country != "SPAIN") %>% 
   bind_rows(
     # AVERAGE MAPE PER MODEL
     model_acc %>% 
-      filter(errors == "MAPE",
+      filter(errors == "RMSE",
              country != "SPAIN") %>%
       group_by(model) %>% 
       summarise(median_MAPE = median(value)) %>% 
@@ -245,26 +246,30 @@ model_acc %>%
   ) %>% 
   select(-errors) %>%
   rename("Country" = country,
-         "XGB_pool" = xgboost,
-         "RF_pool" = rf,
-         "EN_pool" = elastic,
-         "ARIMA" = arima_single,
-         "XGB_s" = xgboost_single,
-         "RF_s" = rf_single,
+         "XGB_pool" = xgboost_pred,
+         "RF_pool" = rf_pred,
+         "EN_pool" = elastic_pred,
+         "ARIMA" = arima_single_pred,
+         "XGB_s" = xgboost_single_pred,
+         "RF_s" = rf_single_pred,
          "Stacking" = stack_pred,
          "Mean_ens" = ensemble_mean_pred,
          "Median_ens" = ensemble_median_pred,
          "Mean" = mean_prediction,
          "Naive" = naive_prediction) %>% 
-  mutate_at(c("Country"), funs(recode(., !!!key))) %>% 
-  kbl(caption = "MAPE across all base, meta, and benchmark models", digits = 3, align = "c") %>%
-  kable_classic(full_width = F, html_font = "Cambria") %>% 
-  add_header_above(c(" " = 1, "Pooled" = 3, "Single-Country" = 3, "Ensembles" = 3, "Benchmark" = 2)) %>%
-  add_header_above(c(" " = 1, "Base" = 6, "Meta" = 3, " " = 2)) %>% 
-  column_spec(1, bold = T, border_right = T) %>% 
-  column_spec(7, border_right = T) %>% 
-  column_spec(9, border_right = T) %>% 
-  row_spec(9, bold = T, color = "black", background = "#DCDCDC")
+  mutate_at(c("Country"), funs(recode(., !!!key))) 
+  
+  # write.xlsx(., file = "01_MAPE across models.xlsx",
+  #          sheetName="01", append=TRUE) 
+
+  # kbl(caption = "MAPE across all base, meta, and benchmark models", digits = 3, align = "c") %>%
+  # kable_classic(full_width = F, html_font = "Cambria") %>% 
+  # add_header_above(c(" " = 1, "Pooled" = 3, "Single-Country" = 3, "Ensembles" = 3, "Benchmark" = 2)) %>%
+  # add_header_above(c(" " = 1, "Base" = 6, "Meta" = 3, " " = 2)) %>% 
+  # column_spec(1, bold = T, border_right = T) %>% 
+  # column_spec(7, border_right = T) %>% 
+  # column_spec(10, border_right = T) %>% 
+  # row_spec(9, bold = T, color = "black", background = "#DCDCDC")
 
 
 # BASE & META-MODEL: ACCURACY INCREASE BY MODEL, OVER COUNTRIES, AND COMPARED TO BENCHMARK -----
@@ -277,7 +282,7 @@ model_acc %>%
                values_to = "value") %>% 
   ungroup() %>% 
   group_by(country, errors, models) %>% 
-  summarise(increase = ((mean_prediction - value) / value) * 100) %>% 
+  summarise(increase = (1-(value / mean_prediction))) %>% # previously mean_pred / value
   pivot_wider(names_from = models,
               values_from = increase) %>% 
   ungroup() %>% 
@@ -299,36 +304,39 @@ model_acc %>%
       ungroup() %>% 
       group_by(models) %>% 
       summarise(value = median(value),
-                increase = median(((mean_prediction - value) / value) * 100)) %>% 
+                increase = median((1-(value / mean_prediction)))) %>%  # previously mean_pred / value
       select(models, increase) %>% 
       pivot_wider(names_from = models,
                   values_from = increase) %>% 
       ungroup() %>% 
       summarise_if(is.numeric, median) %>% 
       mutate_if(is.numeric, round, 3) %>% 
-      mutate(country = "MEDIAN")
-  ) %>% 
-  rename("Country" = country,
-         "XGB_pool" = xgboost,
-         "RF_pool" = rf,
-         "EN_pool" = elastic,
-         "ARIMA" = arima_single,
-         "XGB_s" = xgboost_single,
-         "RF_s" = rf_single,
-         "Stacking" = stack_pred,
-         "Mean_ens" = ensemble_mean_pred,
-         "Median_ens" = ensemble_median_pred) %>% 
-  select(Country, XGB_pool, RF_pool, EN_pool, ARIMA, XGB_s, RF_s, Stacking, Mean_ens, Median_ens) %>% 
-  kbl(caption = "Improvement in MAPE comapred to Mean Forecast", digits = 2, align = "c") %>%
-  kable_classic(full_width = F, html_font = "Cambria") %>% 
-  add_header_above(c(" " = 1, "Pooled" = 3, "Single-Country" = 3, "Ensembles" = 3)) %>%
-  add_header_above(c(" " = 1, "Base" = 6, "Meta" = 3)) %>% 
-  column_spec(1, bold = T, border_right = T) %>% 
-  column_spec(7, border_right = T) %>% 
-  # column_spec(10, border_right = T) %>% 
-  row_spec(8, bold = T, color = "black", background = "#DCDCDC")
-
-acc_benchmark_all <- cell_spec(acc_benchmark_all[1,2], "latex", underline = T)
+      mutate(country = "MEDIAN")) %>% 
+    rename("Country" = country,
+           "XGB_pool" = xgboost_pred,
+           "RF_pool" = rf_pred,
+           "EN_pool" = elastic_pred,
+           "ARIMA" = arima_single_pred,
+           "XGB_s" = xgboost_single_pred,
+           "RF_s" = rf_single_pred,
+           "Stacking" = stack_pred,
+           "Mean_ens" = ensemble_mean_pred,
+           "Median_ens" = ensemble_median_pred) %>% 
+  mutate_at(c("Country"), funs(recode(., !!!key))) %>% 
+  mutate_if(is.numeric, funs(scales::percent(., accuracy = .1))) %>% 
+  select(Country, XGB_pool, RF_pool, EN_pool, ARIMA, XGB_s, RF_s, Stacking, Mean_ens, Median_ens) 
+  
+  
+  # write.xlsx(., file = "02_mape_inc_relative.xlsx",
+  #            sheetName="01", append=TRUE)
 
 
+  # kbl(caption = "Improvement in MAPE compared to Mean Forecast [in percent]", digits = 2, align = "c") %>%
+  # kable_classic(full_width = F, html_font = "Cambria") %>% 
+  # add_header_above(c(" " = 1, "Pooled" = 3, "Single-Country" = 3, "Ensembles" = 3)) %>%
+  # add_header_above(c(" " = 1, "Base" = 6, "Meta" = 3)) %>% 
+  # column_spec(1, bold = T, border_right = T) %>% 
+  # column_spec(7, border_right = T) %>% 
+  # # column_spec(10, border_right = T) %>% 
+  # row_spec(8, bold = T, color = "black", background = "#DCDCDC")
   
