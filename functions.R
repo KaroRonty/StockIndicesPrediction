@@ -295,10 +295,10 @@ predict_tidymodels <- function(X.model, newdata){
 
 predict_xgboost <- function(newdata){
   to_model_xgboost_ale <- build.x(~ .,
-                                  data = to_ale[, -1],
+                                  data = newdata[, -1],
                                   contrasts = FALSE) %>% 
     as_tibble() %>% 
-    add_column(date = to_ale$date) %>% 
+    add_column(date = newdata$date) %>% 
     full_join(to_model %>%
                 select(starts_with("country")) %>% 
                 slice(0)) %>% 
@@ -323,10 +323,10 @@ predict_xgboost <- function(newdata){
 
 predict_rf <- function(newdata){
   to_model_rf_ale <- build.x(~ .,
-                             data = to_ale[, -1],
+                             data = newdata[, -1],
                              contrasts = FALSE) %>% 
     as_tibble() %>% 
-    add_column(date = to_ale$date) %>% 
+    add_column(date = newdata$date) %>% 
     full_join(to_model %>%
                 select(starts_with("country")) %>% 
                 slice(0)) %>% 
@@ -350,18 +350,6 @@ predict_rf <- function(newdata){
 }
 
 predict_elastic <- function(newdata){
-  print(nrow(newdata))
-  print(nrow(build.x(~ .,
-                     data = newdata[, -1],
-                     contrasts = FALSE) %>% 
-               as_tibble()))
-  print(nrow(build.x(~ .,
-                     data = newdata[, -1],
-                     contrasts = FALSE) %>% 
-               as_tibble() %>% 
-               full_join(to_model %>%
-                           select(starts_with("country")) %>% 
-                           slice(0))))
   to_model_elastic_ale <- build.x(~ .,
                                   data = newdata[, -1],
                                   contrasts = FALSE) %>% 
@@ -392,8 +380,11 @@ predict_elastic <- function(newdata){
 
 predict_arima <- function(country_n, newdata){
   
+  newdata_temp <- newdata %>% 
+    filter(country == countries_to_predict[country_n])
+  
   to_model_arima_ale <- build.x(~ .,
-                                data = newdata[, -1:-2],
+                                data = newdata_temp[, -1:-2],
                                 contrasts = FALSE) %>% 
     as_tibble() %>% 
     mutate_if(is.numeric, ~ifelse(.x == 1000, NA, .x))
@@ -401,23 +392,30 @@ predict_arima <- function(country_n, newdata){
   ale_data_arima <- model_recipe_arima_prepared %>% 
     bake(to_model_arima_ale %>% 
            mutate_all(as.numeric)) %>% 
-    mutate(country = countries_to_predict[country_n],
-           date = newdata$date) %>% 
+    mutate(country = newdata_temp %>% 
+             pull(country),
+           date = newdata_temp %>% 
+             pull(date)) %>% 
     # na.omit() %>% 
     as_tsibble(key = "country") %>% 
     suppressMessages()
   
-  predict(arima_model[[country_n]][[1]], ale_data_arima) %>% 
+  arima_model[[country_n]][[1]] %>% 
+    forecast(ale_data_arima) %>% 
     as_tibble() %>% 
     select(date, country, arima_single_pred = .mean)
 }
 
 predict_xgboost_single <- function(country_n, newdata){
+  
+  newdata_temp <- newdata %>% 
+    filter(country == countries_to_predict[country_n])
+  
   to_model_xgboost_single_ale <- build.x(~ .,
-                                         data = newdata[, -1:-2],
+                                         data = newdata_temp[, -1:-2],
                                          contrasts = FALSE) %>% 
     as_tibble() %>% 
-    add_column(date = as.numeric(newdata$date),
+    add_column(date = as.numeric(newdata_temp$date),
                country = countries_to_predict[country_n])
   
   model_recipe_xgboost_single_ale <- recipe(
@@ -436,16 +434,20 @@ predict_xgboost_single <- function(country_n, newdata){
   
   predict(xgboost_models_single[[country_n]], ale_data_xgboost_single) %>% 
     mutate(country = countries_to_predict[country_n],
-           date = newdata$date) %>% 
+           date = newdata_temp$date) %>% 
     select(date, country, xgboost_single_pred = .pred)
 }
 
 predict_rf_single <- function(country_n, newdata){
+  
+  newdata_temp <- newdata %>% 
+    filter(country == countries_to_predict[country_n])
+  
   to_model_rf_single_ale <- build.x(~ .,
-                                    data = newdata[, -1:-2],
+                                    data = newdata_temp[, -1:-2],
                                     contrasts = FALSE) %>% 
     as_tibble() %>% 
-    add_column(date = as.numeric(newdata$date),
+    add_column(date = as.numeric(newdata_temp$date),
                country = countries_to_predict[country_n])
   
   model_recipe_rf_single_ale <- recipe(
@@ -464,34 +466,36 @@ predict_rf_single <- function(country_n, newdata){
   
   predict(rf_models_single[[country_n]], ale_data_rf_single) %>% 
     mutate(country = countries_to_predict[country_n],
-           date = newdata$date) %>% 
+           date = newdata_temp$date) %>% 
     select(date, country, rf_single_pred = .pred)
 }
 
 predict_stack <- function(X.model, newdata){
   xgboost_pred <- predict_xgboost(newdata)
+  
   rf_pred <- predict_rf(newdata)
+  
   elastic_pred <- predict_elastic(newdata)
+  
   arima_pred <- map(
     seq_along(countries_to_predict),
-    ~predict_arima(
+    ~safely(predict_arima)(
       .x, 
-      newdata %>% 
-        filter(country == countries_to_predict[.x]))) %>% 
+      newdata)$result) %>% 
     bind_rows()
+  
   xgboost_single_pred <- map(
     seq_along(countries_to_predict),
-    ~predict_xgboost_single(
+    ~safely(predict_xgboost_single)(
       .x, 
-      newdata %>% 
-        filter(country == countries_to_predict[.x]))) %>% 
+      newdata)$result) %>% 
     bind_rows()
+  
   rf_single_pred <- map(
     seq_along(countries_to_predict),
-    ~predict_rf_single(
+    ~safely(predict_rf_single)(
       .x, 
-      newdata %>% 
-        filter(country == countries_to_predict[.x]))) %>% 
+      newdata)$result) %>% 
     bind_rows()
   
   to_stack_ale <- map(c("xgboost_pred",
@@ -678,6 +682,7 @@ custom_pdp <- function (X, X.model, pred.fun, J, K){
 }
 
 custom_ale <- function(X, X.model, pred.fun, J, K = 40, NA.plot = TRUE){
+  X <- X[X[, J] != 1000, ]
   N = dim(X)[1]
   d = dim(X)[2]
   if (length(J) == 1) {
