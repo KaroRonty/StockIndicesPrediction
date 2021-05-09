@@ -286,13 +286,6 @@ get_final_single_xgboost_predictions <- function(.x){
            pull(.pred))
 }
 
-# TODO delete
-predict_tidymodels <- function(X.model, newdata){
-  X.model %>% 
-    predict(newdata) %>% 
-    pull(.pred)
-}
-
 predict_xgboost <- function(newdata){
   to_model_xgboost_ale <- build.x(~ .,
                                   data = newdata[, -1],
@@ -430,7 +423,7 @@ predict_xgboost_single <- function(country_n, newdata){
   
   ale_data_xgboost_single <- model_recipe_xgboost_single_ale %>% 
     prep() %>% 
-    bake(to_model_xgboost_single_ale)
+    juice()
   
   predict(xgboost_models_single[[country_n]], ale_data_xgboost_single) %>% 
     mutate(country = countries_to_predict[country_n],
@@ -462,7 +455,7 @@ predict_rf_single <- function(country_n, newdata){
   
   ale_data_rf_single <- model_recipe_rf_single_ale %>% 
     prep() %>% 
-    bake(to_model_rf_single_ale)
+    juice()
   
   predict(rf_models_single[[country_n]], ale_data_rf_single) %>% 
     mutate(country = countries_to_predict[country_n],

@@ -11,11 +11,12 @@ model_recipe_prepared <- model_recipe %>%
   prep()
 
 # Join product names and models for PDP
-to_ale <- to_model_mm %>% 
-  filter(country %in% countries_to_predict)
+to_ale_training <- to_model_mm %>% 
+  filter(country %in% countries_to_predict) %>% 
+  filter(date < yearmonth(leakage_start_date))
 
 # Get feature classes
-feature_classes <- to_ale %>% 
+feature_classes <- to_ale_training %>% 
   as_tibble() %>% 
   summarise_all(class) %>% 
   t() %>% 
@@ -32,30 +33,30 @@ feature_classes <- to_ale %>%
 continuous_features <- feature_classes %>% 
   pull(row_number)
 
-tic_continuous <- Sys.time()
-ale_continuous <- map(
+tic_ale_training <- Sys.time()
+ale_training <- map(
   continuous_features,
-  ~safely(custom_ale)(X = as.data.frame(to_ale),
+  ~safely(custom_ale)(X = as.data.frame(to_ale_training),
                       X.model = stack_model, 
                       pred.fun = predict_stack %>% 
                         suppressMessages(),
                       J = .x,
                       K = 100)$result %>% 
-  as_tibble() %>% 
-  mutate(feature = colnames(to_ale)[.x]) %>%
-  select(feature, everything())) %>% 
+    as_tibble() %>% 
+    mutate(feature = colnames(to_ale_training)[.x]) %>%
+    select(feature, everything())) %>% 
   bind_rows() %>% 
   suppressMessages()
-(toc_continuous <- Sys.time() - tic_continuous)
+(toc_ale_training <- Sys.time() - tic_ale_training)
 
-saveRDS(ale_continuous, 
+saveRDS(ale_training, 
         paste0("ale_continuous_stack_", 
                Sys.Date(), 
                "_",
                round(runif(1, 0, 1000), 0), 
                ".RDS"))
 
-ale_continuous_clean <- ale_continuous %>% 
+ale_continuous_clean <- ale_training %>% 
   # filter(case_when(
   #   feature == "cape" & (x.values > 0 & x.values < 40) ~ TRUE,
   #   feature == "cpi" & (x.values > 20 & x.values < 100) ~ TRUE,
