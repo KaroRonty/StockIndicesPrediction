@@ -6,6 +6,10 @@ n_countries_to_invest_in <- 3
 n_rebalances <- c(1, 2, 3)
 plot_max_date <- "2020 Aug"
 
+preds_vs_actuals <- preds_vs_actuals %>% 
+  filter(country %in% countries_to_predict, 
+         country != "SPAIN")
+
 evaluate_financial_performance <- function(n_rebalance){
   
   investing_dates <- seq.Date(as_date(yearmonth("2005 Aug")),
@@ -138,6 +142,8 @@ performances <- map(n_rebalances,
                     evaluate_financial_performance) %>% 
   bind_rows()
 
+
+
 performance_to_plot <- performances %>% 
   mutate(model_and_cagr = model %>% 
            factor(
@@ -204,7 +210,7 @@ returns_per_rebalancing <- performances %>%
 
 to_table <- preds_vs_actuals %>% 
   na.omit() %>% 
-  pivot_longer(-c(date, country, actual), 
+  pivot_longer(-c("date", "country", "actual"), 
                names_to = "Model",
                values_to = "pred") %>% 
   group_by(country, Model) %>% 
@@ -213,52 +219,68 @@ to_table <- preds_vs_actuals %>%
   group_by(Model) %>% 
   summarise(`Median MAPE` = median(MAPE)) %>% 
   full_join(returns_per_rebalancing %>%
-              rename_with(~paste("CAGR", .x, "rebalances")) %>% 
+              rename_with(~paste("CAGR", .x, "rebalancing")) %>% 
               rename(Model = 1)) %>% 
   full_join(sharpes_to_table %>% 
-              rename_with(~paste("Sharpe", .x, "rebalances")) %>% 
+              rename_with(~paste("Sharpe", .x, "rebalancing")) %>% 
               rename(Model = 1)) %>% 
-  mutate(Model = Model %>% 
-           str_remove("_prediction|_pred") %>% 
-           str_replace("_", " ") %>% 
+  mutate(Model = Model %>%
+           str_remove("_prediction|_pred") %>%
+           str_replace("_", "") %>%
            toupper() %>% 
-           str_replace("SINGLE", "single") %>% 
-           str_replace("RF", "Random Forest") %>% 
-           str_replace("XGBOOST", "XGBoost") %>% 
-           str_replace("ELASTIC", "Elastic Net")) %>% 
-  mutate(`Median MAPE` = scales::number(`Median MAPE` * 100, 0.001) %>% 
+           str_replace("SINGLE", "_s") %>% 
+           str_replace("RF$", "RF_p") %>% 
+           str_replace("ELASTIC", "EN_p") %>% 
+           str_replace("XGBOOST$", "XGB_p") %>%
+           str_replace("XGBOOST", "XGB") %>%
+           str_replace("ENSEMBLEMEDIAN", "Median_ens") %>% 
+           str_replace("ENSEMBLEMEAN", "Mean_ens") %>% 
+           str_replace("MEAN", "Mean") %>% 
+           str_replace("NAIVE",  "Naive") %>% 
+           str_replace("STACK", "Stacking") %>% 
+           str_replace("BENCHMARK", "Benchmark")) %>% 
+             
+  mutate(`Median MAPE` = scales::number(`Median MAPE` * 1, 0.001) %>% 
            replace_na("")) %>% 
   mutate_at(vars(starts_with("CAGR")),
             ~scales::percent(.x - 1, 0.001, suffix = "")) %>% 
   mutate_at(vars(starts_with("Sharpe")),
-            ~scales::number(.x, 0.001))
+            ~scales::number(.x, 0.001)) %>% 
+  slice(1, 2, 7, 8, 10, 11,
+        3, 4, 9,
+        5, 6, 12) 
 
 # sharpes_per_rebalancing <- performances %>% 
 # sharpes_per_rebalancing <- performances %>% 
 to_table %>% 
-  slice(1, 2, 7, 8, 10, 11,
-        3, 4, 9,
-        5, 6, 12) %>% 
   rename_at(vars(contains("Sharpe")), 
-            ~str_replace(.x, "balances", "balances ")) %>% 
+            ~str_replace(.x, "rebalancing", "rebalancing ")) %>% 
   rename_with(~str_remove(.x, "CAGR |Sharpe ")) %>% 
   kable(
     caption = 
-      "Financial and non-financial measures by rebalancing period") %>% 
-  kable_classic_2() %>% 
-  add_header_above(c(" " = 2, 
+      "Financial and non-financial measures by rebalancing period", digits = 3) %>% 
+  kable_classic(full_width = F, html_font = "Cambria") %>% 
+  add_header_above(c(" " = 1,
+                     "Predictive Perf." = 1,
                      "CAGR" = 3,
                      "Sharpe" = 3)) %>% 
+  row_spec(c(10:12), color = "black", background = "#DCDCDC") %>% 
+  column_spec(2, border_right = T) %>% 
+  column_spec(5, border_right = T) %>% 
   row_spec(
     6,
-    extra_css = "border-bottom: 1px solid; border-bottom-color: lightgray") %>%
+    extra_css = "border-bottom: 1px solid; border-bottom-color: black") %>%
   row_spec(
     9,
-    extra_css = "border-bottom: 1px solid; border-bottom-color: lightgray") %>%
+    extra_css = "border-bottom: 1px solid; border-bottom-color: black") %>%
   row_spec(
     11,
-    extra_css = "border-bottom: 1px solid; border-bottom-color: lightgray") %>%
+    extra_css = "border-bottom: 1px solid; border-bottom-color: black") %>%
   print()
+
+write.xlsx(to_table, file = "03_financial_performance.xlsx",
+           sheetName="01", append=TRUE)
+
 
 p_cum <- performance_to_plot %>%
   filter(!(model_and_cagr %in% c("NAIVE", "MEAN"))) %>% 
@@ -274,8 +296,8 @@ p_cum <- performance_to_plot %>%
             data = performance_to_plot %>% 
               ungroup() %>% 
               select(date, benchmark_cum) %>% 
-              distinct()) +
-  facet_wrap(~model_and_cagr) + 
+              distinct(), linetype = "dashed") +
+  facet_wrap(~model_and_cagr, nrow = 5) + 
   # geom_hline(yintercept = 100, linetype = "dashed", color = "gray") +
   scale_x_yearmonth(guide = guide_axis(n.dodge = 2)) +
   scale_y_continuous(breaks = seq(50, 300, 50),
@@ -287,9 +309,9 @@ p_cum <- performance_to_plot %>%
   labs(
     title = 
       "Returns of strategies based on models (colored) vs benchmark (black)",
-    subtitle = paste0("Investing in ",
-                      n_countries_to_invest_in,
-                      " out of 8 countries"),
+    # subtitle = paste0("Investing in ",
+    #                   n_countries_to_invest_in,
+    #                   " out of 8 countries"),
     caption = "Ordered from best to worst average performance by model",
     x = NULL,
     y = "Cumulative return over the whole test period") +
@@ -297,3 +319,6 @@ p_cum <- performance_to_plot %>%
   theme(legend.position = "bottom")
 
 print(p_cum)
+
+ggsave("Results_Financial Performance and Rebalancing.png", path = "Plots", 
+       width = 8, height = 12, dpi = 300)

@@ -5,7 +5,7 @@ library(tsibble)
 library(ggplot2)
 library(ggforce)
 
-# GRAPH: TIME-SERIES TRAINING PROCESS
+# GRAPH: TIME-SERIES TRAINING PROCESS -------
 
 plot_segmentation <- arima_fcast %>% 
   filter(country == "UK") %>% 
@@ -31,7 +31,7 @@ plot_segmentation <- arima_fcast %>%
             aes(color = "Actual")) +
   
   
-  labs(title = "Data Segmentation Process for U.K.",
+  labs(title = "Data Segmentation Process for U.K. using DR with ARIMA errors",
        subtitle = "Using CAGR as a target requires the implementation of a 5-year leakage set",
        x = "Year",
        y = "5-year CAGR",
@@ -45,8 +45,9 @@ plot_segmentation <- arima_fcast %>%
   theme_bw() +
   theme(legend.position = "bottom", legend.box = "horizontal") +
   guides(colour = guide_legend(nrow = 1))
-  
 
+ggsave("Data_Showing Data Structures.png", path = "Plots", 
+       width = 10, height = 6, dpi = 300)
 
 # GRAPH: DETAILLED FITTING PROCESS
 
@@ -127,7 +128,7 @@ plot_segmentation +
   guides(fill = guide_legend(nrow = 2),
          color = guide_legend(nrow = 2))
 
-# GRAPH: EXPLAINABILITY OF CAGR BY INCREASING CAGR PRIOD
+# GRAPH: EXPLAINABILITY OF CAGR BY INCREASING CAGR PRIOD  -------
   
 to_model_exploration %>% 
   filter(country %in% countries_to_predict) %>% 
@@ -172,7 +173,7 @@ to_model_exploration %>%
   theme(legend.position = "bottom", legend.box = "horizontal") +
   guides(colour = guide_legend(nrow = 1))
 
-# EDA HYPOTHESIS
+# EDA HYPOTHESIS  -------
 
 # 1.) more normal disribution the longer the return horizon
 # 2.) better properties of cagr vs. normal returns (based on mean, variance, distribution)
@@ -193,7 +194,7 @@ add_return <- function(df, lead){
 return_months <- c(1,12,24,36,48,60)
 
 prices_local_long <- suppressMessages(
-  map(return_years,
+  map(return_months,
       ~add_return(prices_local_long, .x)) %>% 
     reduce(inner_join))
 
@@ -257,99 +258,88 @@ prices_local_long %>%
   
   
 
-# GRAPH CONTAINING ALL BASE FORECASTS PER COUNTRY ------
+# GRAPH CONTAINING ALL BASE FORECASTS PER COUNTRY   -------
 
 preds_vs_actuals %>% 
-  filter(country %in% countries_to_predict) %>% 
-  pivot_longer(cols = c("actual", "xgboost", "rf", "elastic", 
-                        "xgboost_single","rf_single", "arima_single"),
+  filter(country %in% countries_to_predict,
+         country != "SPAIN") %>% 
+  pivot_longer(cols = c("actual", "xgboost_pred", "rf_pred", "elastic_pred", 
+                        "xgboost_single_pred","rf_single_pred", "arima_single_pred"),
                names_to = "models",
                values_to = "cagr") %>% 
   ggplot(aes(date, cagr, colour = models, linetype = models, size = models)) +
   geom_line() +
-  # geom_hline(yintercept = 1, colour = "red", linetype = "dashed") + 
   facet_wrap(~country, nrow = 4) +
   labs(title = "Prediction Comparison among base-models",
-       # subtitle = "Machine Learning models using pooling show the best fit, while ARIMA tends to over- or underestimate",
-       # colour = "Base Models",
+       colour = "Base Models",
        x = "Year",
        y = "5-Year CAGR") +
     # RColorBrewer::brewer.pal(n = 8, name = 'Dark2')
   scale_color_manual(values = c("actual" = "black", 
-                                "xgboost" = "#1B9E77", # dark turq
-                                "rf" = "#D95F02", # orange brown
-                                "elastic" = "#E7298A", # magenta
-                                "xgboost_single" = "#1B9E77", # dark turq
-                                "rf_single" = "#D95F02", # orange brown
-                                "arima_single" = "#7570B3")) + # dark violett
+                                "xgboost_pred" = "#1B9E77", # dark turq
+                                "rf_pred" = "#D95F02", # orange brown
+                                "elastic_pred" = "#E7298A", # magenta
+                                "xgboost_single_pred" = "#1B9E77", # dark turq
+                                "rf_single_pred" = "#D95F02", # orange brown
+                                "arima_single_pred" = "#7570B3")) + # dark violett
   scale_linetype_manual(values = c("actual" = "solid", 
-                                   "xgboost" = "solid", # dark turq
-                                   "rf" = "solid", # orange brown
-                                   "elastic" = "solid", # magenta
-                                   "xgboost_single" = "dashed",
-                                   "rf_single" = "dashed",
-                                   "arima_single" = "dashed")) +
+                                   "xgboost_pred" = "solid", # dark turq
+                                   "rf_pred" = "solid", # orange brown
+                                   "elastic_pred" = "solid", # magenta
+                                   "xgboost_single_pred" = "dashed",
+                                   "rf_single_pred" = "dashed",
+                                   "arima_single_pred" = "dashed")) +
   scale_size_manual(values = c("actual" = 0.7, 
-                                   "xgboost" = 0.5, # dark turq
-                                   "rf" = 0.5, # orange brown
-                                   "elastic" = 0.5, # magenta
-                                   "xgboost_single" = 0.5,
-                                   "rf_single" = 0.5,
-                                   "arima_single" = 0.5)) +
-  theme_bw() +
+                               "xgboost_pred" = 0.5, # dark turq
+                               "rf_pred" = 0.5, # orange brown
+                               "elastic_pred" = 0.5, # magenta
+                               "xgboost_single_pred" = 0.5,
+                               "rf_single_pred" = 0.5,
+                               "arima_single_pred" = 0.5)) +
+    theme_bw() +
   theme(legend.position = "bottom", legend.box = "horizontal",
         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
   guides(colour = guide_legend(nrow = 2))
 
-ggsave("Results_Predictive Performance Base Models.png", path = "Plots", 
-       width = 8, height = 12, dpi = 300)
+ggsave("Results_Base Model and Predictive Performance.png", path = "Plots", 
+       width = 10, height = 12, dpi = 300)
 
-# GRAPH CORRELATION BETWEEN BASE FORECASTS ------
+# GRAPH CORRELATION BETWEEN BASE FORECASTS
 preds_vs_actuals %>% 
-  select(date, country, actual, 
-         xgboost, rf, elastic,
-         arima_single, xgboost_single, rf_single) %>% 
   filter(country %in% countries_to_predict) %>% 
   GGally::ggpairs(columns = 3:9)
 
 
-# STACKED AND ENSEMBLE FORECASTS ------
+# STACKED AND ENSEMBLE FORECASTS -----
 preds_vs_actuals %>% 
-  filter(country %in% countries_to_predict) %>% 
-  select(date, country, actual, ensemble_mean_pred, ensemble_median_pred, stack_pred) %>% 
+  filter(country %in% countries_to_predict,
+         country != "SPAIN") %>% 
   pivot_longer(cols = c("actual", "ensemble_mean_pred", "ensemble_median_pred", "stack_pred"),
-               names_to = "models",
+               names_to = "model",
                values_to = "pred") %>% 
-  ggplot(aes(date, pred, colour = models, size = models)) +
+  ggplot(aes(date, pred, colour = model)) +
   geom_line() +
   facet_wrap(~country, nrow = 4) +
-  labs(title = "Prediction Comparison between Stacking and Ensemble Models",
-       # subtitle = "Machine Learning models using pooling show the best fit, while ARIMA tends to over- or underestimate",
-       # colour = "2nd Level Models",
+  labs(title = "Prediction Comparison among ensemble and stacking models",
+       colour = "Meta Models",
        x = "Year",
        y = "5-Year CAGR") +
   scale_x_yearquarter() +
-  scale_color_manual(values = c("actual" = "black", 
+    scale_color_manual(values = c("actual" = "black", 
                                 "ensemble_mean_pred" = "#1B9E77", # dark turq
                                 "ensemble_median_pred" = "#E7298A", # magenta
                                 "stack_pred" = "#D95F02")) + # dark violett
-  scale_size_manual(values = c("actual" = 0.7, 
-                               "ensemble_mean_pred" = 0.5, # dark turq
-                               "ensemble_median_pred" = 0.5, # orange brown
-                               "stack_pred" = 0.7)) +
   theme_bw() +
   theme(legend.position = "bottom", legend.box = "horizontal",
         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
   guides(colour = guide_legend(nrow = 1))
 
-ggsave("Results_Predictive Performance Meta Models.png", path = "Plots", 
-       width = 8, height = 12, dpi = 300)
-
+ggsave("Results_Ensembles and Predictive Performance.png", path = "Plots", 
+       width = 10, height = 12, dpi = 300)
 
 
 # GRAPH CORRELATION BETWEEN ENSEMBLE AND STACKED FORECASTS 
-preds_vs_actuals_ensemble %>% 
-  left_join(preds_vs_actuals_stack %>% select(date, country, stack_pred)) %>% 
+preds_vs_actuals %>% 
   select(date, country, actual, ensemble_mean_pred, ensemble_median_pred, stack_pred) %>%
   filter(country %in% countries_to_predict) %>% 
   GGally::ggpairs(columns = 3:6)
@@ -359,8 +349,8 @@ preds_vs_actuals_ensemble %>%
 # statistically significant difference between models in terms of forecast accuracy
 
 # vector for model combinations
-base_models <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_pred", "mean_prediction")
-base_models2 <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_pred", "mean_prediction")
+base_models <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_pred", "mean_pred")
+base_models2 <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_pred", "mean_pred")
 horizons <- c(1,6,12,24,36,48,60,90,120)
 
 mc <- crossing(countries_to_predict, base_models, base_models2, horizons)
@@ -371,7 +361,7 @@ map(1:nrow(mc), ~preds_vs_actuals %>%
       filter(country %in% countries_to_predict) %>% 
       filter(country == paste0(mc[.x,1])) %>%
       mutate(period = row_number()) %>% # period number necessary for DM.test function
-      select(period, actual, xgboost_pred, rf_pred, elastic_pred, arima_pred, mean_prediction) %>% 
+      select(period, actual, xgboost_pred, rf_pred, elastic_pred, arima_pred, mean_pred) %>% 
       select(period, actual, paste(mc[.x,2]), paste(mc[.x,3])) %>%
       as.matrix() %>%  
       DM.test(pluck(3), 
@@ -399,4 +389,4 @@ signal_to_noise <- preds_vs_actuals %>%
             stn_rf = 1 - (var(actual - rf_pred) / var(actual)),
             stn_en = 1 - (var(actual - elastic_pred) / var(actual)),
             stn_arima = 1 - (var(actual - arima_pred) / var(actual)),
-            stn_mean = 1 - (var(actual - mean_prediction) / var(actual))) 
+            stn_mean = 1 - (var(actual - mean_pred) / var(actual))) 
