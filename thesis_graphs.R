@@ -130,25 +130,30 @@ plot_segmentation +
 
 # GRAPH: EXPLAINABILITY OF CAGR BY INCREASING CAGR PRIOD  -------
   
-to_model_exploration %>% 
-  filter(country %in% countries_to_predict) %>% 
+corr_cagr_cape <- to_model_exploration %>% 
+  filter(country %in% countries_to_predict,
+         country != "SPAIN") %>% 
   as_tibble() %>% 
   select(-tail(names(.),5), -date, -country) %>% 
   corrr::correlate(quiet = T) %>% 
   select(term, cape) %>% 
   slice(1:10) %>% 
-  mutate(year = c(1:10),
+  mutate(year = as.integer(c(1:10)),
          cape = -1*cape) %>% 
   ggplot(aes(year, cape, colour = cape)) + 
   geom_line(size = 1.4) +
   labs(x = "Number of CAGR Leads",
        y = "Correlation",
-       title = "Correlation of Forward CAGR with CAPE",
-       subtitle = "Correlation with CAGR and CAPE increases with increasing lead years",
+       # title = "Correlation of Forward CAGR with CAPE",
+       # subtitle = "Correlation with CAGR and CAPE increases with increasing lead years",
        colour = "Correlation") +
+  scale_x_continuous(breaks = seq(1,10,1)) +
   theme_bw() +
   theme(legend.position = "bottom", legend.box = "horizontal") +
   guides(colour = guide_legend(nrow = 1))
+  
+  ggsave("EDA_CAGR CAPE Correlation.png", path = "Plots", 
+       width = 10, height = 6, dpi = 300)
 
 # GRAPH: CORRELATION ACROSS ALL CAGR LEADS AND CAGR / CAPE COMBINATIONS
 
@@ -267,38 +272,48 @@ preds_vs_actuals %>%
                         "xgboost_single_pred","rf_single_pred", "arima_single_pred"),
                names_to = "models",
                values_to = "cagr") %>% 
+  mutate(models = models %>%
+           str_replace("arima_single_pred", "ARIMA") %>% 
+           str_replace("elastic_pred", "EN_p") %>% 
+           str_replace("rf_pred", "RF_p") %>%
+           str_replace("rf_single_pred", "RF_s") %>%
+           str_replace("xgboost_pred", "XGB_p") %>%
+           str_replace("xgboost_single_pred", "XGB_s") %>% 
+           str_replace("actual", "Actual")) %>%
   ggplot(aes(date, cagr, colour = models, linetype = models, size = models)) +
   geom_line() +
   facet_wrap(~country, nrow = 4) +
   labs(title = "Prediction Comparison among base-models",
-       colour = "Base Models",
+       color = "Base-Models",
+       linetype = "Base-Models",
+       size = "Base-Models",
        x = "Year",
        y = "5-Year CAGR") +
     # RColorBrewer::brewer.pal(n = 8, name = 'Dark2')
-  scale_color_manual(values = c("actual" = "black", 
-                                "xgboost_pred" = "#1B9E77", # dark turq
-                                "rf_pred" = "#D95F02", # orange brown
-                                "elastic_pred" = "#E7298A", # magenta
-                                "xgboost_single_pred" = "#1B9E77", # dark turq
-                                "rf_single_pred" = "#D95F02", # orange brown
-                                "arima_single_pred" = "#7570B3")) + # dark violett
-  scale_linetype_manual(values = c("actual" = "solid", 
-                                   "xgboost_pred" = "solid", # dark turq
-                                   "rf_pred" = "solid", # orange brown
-                                   "elastic_pred" = "solid", # magenta
-                                   "xgboost_single_pred" = "dashed",
-                                   "rf_single_pred" = "dashed",
-                                   "arima_single_pred" = "dashed")) +
-  scale_size_manual(values = c("actual" = 0.7, 
-                               "xgboost_pred" = 0.5, # dark turq
-                               "rf_pred" = 0.5, # orange brown
-                               "elastic_pred" = 0.5, # magenta
-                               "xgboost_single_pred" = 0.5,
-                               "rf_single_pred" = 0.5,
-                               "arima_single_pred" = 0.5)) +
-    theme_bw() +
-  theme(legend.position = "bottom", legend.box = "horizontal",
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_color_manual(values = c("Actual" = "black", 
+                                "XGB_p" = "#1B9E77", # dark turq
+                                "RF_p" = "#D95F02", # orange brown
+                                "EN_p" = "#E7298A", # magenta
+                                "XGB_s" = "#1B9E77", # dark turq
+                                "RF_s" = "#D95F02", # orange brown
+                                "ARIMA" = "#7570B3")) + # dark violett
+  scale_linetype_manual(values = c("Actual" = "solid", 
+                                   "XGB_p" = "solid", # dark turq
+                                   "RF_p" = "solid", # orange brown
+                                   "EN_p" = "solid", # magenta
+                                   "XGB_s" = "dashed",
+                                   "RF_s" = "dashed",
+                                   "ARIMA" = "dashed")) +
+  scale_size_manual(values = c("Actual" = 0.7, 
+                               "XGB_p" = 0.5, # dark turq
+                               "RF_p" = 0.5, # orange brown
+                               "EN_p" = 0.5, # magenta
+                               "XGB_s" = 0.5,
+                               "RF_s" = 0.5,
+                               "ARIMA" = 0.5)) +
+  scale_x_yearmonth(guide = guide_axis(n.dodge = 2)) +
+  theme_bw() +
+  theme(legend.position = "bottom", legend.box = "horizontal") +
   guides(colour = guide_legend(nrow = 2))
 
 ggsave("Results_Base Model and Predictive Performance.png", path = "Plots", 
@@ -317,21 +332,26 @@ preds_vs_actuals %>%
   pivot_longer(cols = c("actual", "ensemble_mean_pred", "ensemble_median_pred", "stack_pred"),
                names_to = "model",
                values_to = "pred") %>% 
+  mutate(model = model %>%
+           str_replace("ensemble_mean_pred", "Mean-Stacking") %>% 
+           str_replace("ensemble_median_pred", "Median-Stacking") %>%
+           str_replace("stack_pred", "Elastic-Net-Stacking") %>% 
+           str_replace("actual", "Actual")) %>% 
   ggplot(aes(date, pred, colour = model)) +
   geom_line() +
   facet_wrap(~country, nrow = 4) +
-  labs(title = "Prediction Comparison among ensemble and stacking models",
-       colour = "Meta Models",
+  labs(title = "Prediction Comparison among Stacking Models",
+       colour = "Stacking / Meta-Models",
        x = "Year",
        y = "5-Year CAGR") +
   scale_x_yearquarter() +
-    scale_color_manual(values = c("actual" = "black", 
-                                "ensemble_mean_pred" = "#1B9E77", # dark turq
-                                "ensemble_median_pred" = "#E7298A", # magenta
-                                "stack_pred" = "#D95F02")) + # dark violett
+    scale_color_manual(values = c("Actual" = "black", 
+                                "Mean-Stacking" = "#1B9E77", # dark turq
+                                "Median-Stacking" = "#E7298A", # magenta
+                                "Elastic-Net-Stacking" = "#D95F02")) + # dark violett
+  scale_x_yearmonth(guide = guide_axis(n.dodge = 2)) +
   theme_bw() +
-  theme(legend.position = "bottom", legend.box = "horizontal",
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "bottom", legend.box = "horizontal") +
   guides(colour = guide_legend(nrow = 1))
 
 ggsave("Results_Ensembles and Predictive Performance.png", path = "Plots", 
@@ -349,32 +369,68 @@ preds_vs_actuals %>%
 # statistically significant difference between models in terms of forecast accuracy
 
 # vector for model combinations
-base_models <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_pred", "mean_pred")
-base_models2 <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_pred", "mean_pred")
-horizons <- c(1,6,12,24,36,48,60,90,120)
+base_models <- c("xgboost_pred", "rf_pred", "elastic_pred", 
+                 "arima_single_pred", "xgboost_single_pred", "rf_single_pred", 
+                 "stack_pred", "ensemble_mean_pred", "ensemble_median_pred")
+base_models2 <- c("mean_prediction")
+horizons <- c(1,12,60,120)
 
 mc <- crossing(countries_to_predict, base_models, base_models2, horizons)
 
-# FIXME: strange, even same models with same forecasts are not significantly different from each other
+# DM TEST FOR SIGNIFICANT DIFFERENT FORECAST ERRORS -----
+
+# function to calculate DMs
+
+DM_tests <- function(x) {
+  tt <- preds_vs_actuals %>%
+    filter(country %in% countries_to_predict) %>% 
+    filter(country == paste0(mc[x,1])) %>%
+    mutate(period = row_number()) %>% # period number necessary for DM.test function
+    # select(period, actual, xgboost_pred, rf_pred, elastic_pred, arima_pred, mean_pred) %>% 
+    select(period, actual, paste(mc[x,2]), paste(mc[x,3])) %>%
+    as.matrix()
+  
+  DM.test(tt[,3], 
+          tt[,4], 
+          tt[,2], 
+          # SE for squared scaled error 
+          loss.type = "SE", h = 12, H1 = "more") %>% pluck(4) %>% 
+    tibble(p.value = .,
+           Country = paste(mc[x, 1]),
+           Model = paste(mc[x, 2]),
+           CompModel = paste(mc[1, 3]),
+           h = mc[x,4] %>% as.integer())
+}
+
+# wrap results in map
 dm_test <- 
-map(1:nrow(mc), ~preds_vs_actuals %>%
-      filter(country %in% countries_to_predict) %>% 
-      filter(country == paste0(mc[.x,1])) %>%
-      mutate(period = row_number()) %>% # period number necessary for DM.test function
-      select(period, actual, xgboost_pred, rf_pred, elastic_pred, arima_pred, mean_pred) %>% 
-      select(period, actual, paste(mc[.x,2]), paste(mc[.x,3])) %>%
-      as.matrix() %>%  
-      DM.test(pluck(3), 
-              pluck(4), 
-              pluck(2), 
-              # ASE for absolute scaled error 
-              loss.type = "SE", h = mc[.x, 4] %>% as.integer(), H1 = "more") %>% pluck(4) %>% 
-      tibble(p.value = .,
-             Country = paste(mc[.x, 1]),
-             Model = paste(mc[.x, 2]),
-             CompModel = paste(mc[.x, 3]),
-             h = mc[.x,4] %>% as.integer())) %>% 
-      reduce(bind_rows)
+  map(1:nrow(mc), ~DM_tests(.x)) %>% 
+  reduce(bind_rows) %>% 
+  write.xlsx(., file = "04_significances.xlsx",
+                        sheetName="01", append=TRUE)
+
+
+
+# ns
+dm_test %>% filter(p.value > 0.05,
+                   h == 60,
+                   Country != "SPAIN") %>% View()
+
+# *
+dm_test %>% filter(p.value > 0.01 & p.value <= 0.05,
+                   h == 60,
+                   Country != "SPAIN") %>% View()
+# **
+dm_test %>% filter(p.value > 0.001 & p.value <= 0.01,
+                   h == 60,
+                   Country != "SPAIN") %>% View()
+# ***
+dm_test %>% filter(p.value <= 0.001,
+                   h == 60,
+                   Country != "SPAIN") %>% View()
+
+
+
 
 
 # I assume that the signal to noise ratio, e.g., measured by 
