@@ -225,14 +225,26 @@ suppressMessages(
 # VALIDATION -----
 
 # differencing only applied to LM for AUSTRALIA 
+map(1:8, ~arima_model[[.x]] %>% # FIXME: delete SPAIN
+      .$model %>% 
+      .$arima %>% 
+      .[[1]] %>% 
+      .$fit %>% 
+      .$par) %>% 
+  mutate(country = arima_model[[.x]] %>% .$model %>% .$country) %>% 
+  reduce(bind_rows) %>% 
+  
+
 map(1:8, ~arima_model[[.x]] %>% 
       .$model %>% 
       .$arima) %>% 
   reduce(c) %>% 
   tibble(models = .,
          country = map(1:8, ~arima_model[[.x]] %>% .$model %>% 
-          .$country) %>%
-          reduce(c))
+                         .$country) %>%
+           reduce(c))
+
+
 
 # checking residuals of ARIMA models
 # CANADA; USA; UK; NETHERLANDS; GERMANY; SPAIN; SWITZERLAND are not white-noise
