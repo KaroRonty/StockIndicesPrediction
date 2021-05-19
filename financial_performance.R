@@ -155,13 +155,25 @@ performance_to_plot <- performances %>%
                arrange(-avg_cum_return) %>% 
                pull(model)) %>% 
            fct_relabel(~.x %>% 
-                         str_remove("_prediction|_pred") %>% 
-                         str_replace("_", " ") %>% 
-                         toupper() %>% 
-                         str_replace("SINGLE", "single") %>% 
-                         str_replace("RF", "Random Forest") %>% 
-                         str_replace("XGBOOST", "XGBoost") %>% 
-                         str_replace("ELASTIC", "Elastic Net")))
+                         str_remove("_prediction|_pred") %>%
+                         str_replace("_", " ") %>%
+                         toupper() %>%
+                         str_replace("SINGLE", "single") %>%
+                         str_replace("RF", "Random Forest") %>%
+                         str_replace("XGBOOST", "XGBoost") %>%
+                         str_replace("ELASTIC", "Elastic Net") %>%
+                         
+                         str_replace("ARIMA single" , "ARIMA") %>% 
+                         str_replace("ENSEMBLE MEDIAN", "Median-Stacking") %>%
+                         str_replace("XGBoost single", "XGB_s") %>% 
+                         str_replace("Random Forest single", "RF_s") %>%
+                         str_replace("ENSEMBLE MEAN", "Mean-Stacking") %>% 
+                         str_replace("STACK", "Elastic-Net-Stacking") %>%
+                         str_replace("Elastic Net", "EN_p") %>% 
+                         str_replace("XGBoost", "XGB_p") %>% 
+                         str_replace("Random Forest", "RF_p")))
+         
+
 
 sharpes_to_plot <- performance_to_plot %>% 
   ungroup() %>% 
@@ -174,6 +186,7 @@ sharpes_to_plot <- performance_to_plot %>%
   full_join(performance_to_plot %>% 
               filter(model == "benchmark") %>% 
               select(model, rebalance_freq, Sharpe))
+
 
 sharpes_to_table <- sharpes_to_plot %>% 
   pivot_wider(names_from = rebalance_freq, 
@@ -297,12 +310,12 @@ p_cum <- performance_to_plot %>%
               ungroup() %>% 
               select(date, benchmark_cum) %>% 
               distinct(), linetype = "dashed") +
-  facet_wrap(~model_and_cagr, nrow = 5) + 
+  facet_wrap(~model_and_cagr, ncol = 3) + 
   # geom_hline(yintercept = 100, linetype = "dashed", color = "gray") +
   scale_x_yearmonth(guide = guide_axis(n.dodge = 2)) +
   scale_y_continuous(breaks = seq(50, 300, 50),
                      labels = seq(50, 300, 50)) +
-  scale_color_discrete(name = "Number of rebalances") +
+  scale_color_discrete(name = "Rebalance Frequence") +
   # scale_color_discrete(name = "Outperformed benchmark",
   #                      breaks = c(TRUE, FALSE),
   #                      labels = c("Yes", "No")) +
@@ -314,11 +327,214 @@ p_cum <- performance_to_plot %>%
     #                   " out of 8 countries"),
     caption = "Ordered from best to worst average performance by model",
     x = NULL,
-    y = "Cumulative return over the whole test period") +
-  theme_minimal() +
+    y = "Cumulative Return (over the whole test period)") +
+  theme_bw() +
   theme(legend.position = "bottom")
 
 print(p_cum)
 
 ggsave("Results_Financial Performance and Rebalancing.png", path = "Plots", 
-       width = 8, height = 12, dpi = 300)
+       width = 10, height = 10, dpi = 300)
+
+
+
+# SIGNIFICANCE OF SHARPE ----
+# account for significance
+# our sharpe is annualized, rebalancing does not affect to number of 
+
+
+library(SharpeR)
+
+# model and rebalancing variations
+variations_fin_results <- performances %>% 
+  distinct(model, rebalance_freq) %>% 
+  filter(model != "benchmark")
+
+# risk free rate USA
+rf_usa <- s_rate_10_year_long %>%
+  filter(country == "USA", date > yearmonth("2005 Jul")) %>%
+  rename(time = date) %>%
+  select(time, s_rate_10_year) %>%
+  imputeTS::na_ma(k = 4, weighting = "simple") %>%
+  # transfer from annualized to yearly yield
+  mutate(s_rate_10_year = (1 + (s_rate_10_year / 100))^(1 / 12) - 1)
+
+
+sharpe_significance <- function(x) {
+  a1 <- as.sr(x = performances %>% 
+                filter(model == paste0(variations_fin_results[x,1]), 
+                       rebalance_freq == as.integer(variations_fin_results[x,2])) %>%
+                rename(time = date) %>% 
+                select(time, strategy_return_1_month) %>% 
+                mutate(strategy_return_1_month = strategy_return_1_month - 1) %>%
+                ts_xts(),
+              # c0 = (1 + 0.016)^(1 / 12) - 1,
+              c0 = 0, # FIXME
+              ope = 12, 
+              na.rm = T) %>% 
+    suppressMessages()
+  
+  a2 <- confint(a1, 
+          level = 0.95,
+          type = "exact")
+  
+    tibble(model = as.character(variations_fin_results[x,1]),
+           rebalancing = as.integer(variations_fin_results[x,2]),
+           upper = a2[2],
+           bottom = a2[1],
+           sr = a1$sr[1])
+  
+}
+
+sharpe_full <- 
+  map(1:nrow(variations_fin_results), ~sharpe_significance(.x)) %>% 
+  reduce(bind_rows) 
+  
+write.xlsx(sharpe_full, file = "05_new_sharpes.xlsx",
+             sheetName="01", append=TRUE)
+
+
+# SHARPE RF BASED RESULTS -----
+
+sharpe_significance_rf <- function(x) {
+  a1 <- as.sr(x = performances %>% 
+                filter(model == paste0(variations_fin_results[x,1]), 
+                       rebalance_freq == as.integer(variations_fin_results[x,2])) %>%
+                rename(time = date) %>% 
+                select(time, strategy_return_1_month) %>% 
+                mutate(strategy_return_1_month = strategy_return_1_month - 1) %>%
+                # add risk free rate
+                left_join(rf_usa) %>% 
+                mutate(strategy_return_1_month  = strategy_return_1_month  - s_rate_10_year) %>% 
+                select(-model, -s_rate_10_year) %>% 
+                ts_xts(),
+                c0 = 0, # added in x 
+              ope = 12, 
+              na.rm = T) %>% 
+    suppressMessages()
+  
+  a2 <- confint(a1, 
+                level = 0.95,
+                type = "exact")
+  
+  tibble(model = as.character(variations_fin_results[x,1]),
+         rebalancing = as.integer(variations_fin_results[x,2]),
+         upper = a2[2],
+         bottom = a2[1],
+         sr = a1$sr[1])
+  
+}
+
+sharpe_full_rf <- 
+  map(1:nrow(variations_fin_results), ~sharpe_significance_rf(.x)) %>% 
+  reduce(bind_rows) 
+
+write.xlsx(sharpe_full_rf, file = "05_new_sharpes_rf.xlsx",
+           sheetName="01", append=TRUE)
+
+# SR Equal-Weight Benchmark 
+as.sr(x = equal_weight_monthly_return %>% 
+        rename(time = date) %>% 
+        mutate(equal_weight_return_1_month = equal_weight_return_1_month - 1) %>% 
+        left_join(rf_usa) %>% 
+        mutate(equal_weight_return_1_month  = equal_weight_return_1_month  - s_rate_10_year) %>% 
+        select(-s_rate_10_year) %>% 
+        ts_xts(),
+      c0 = 0, # added in x 
+      ope = 12, 
+      na.rm = T) %>% 
+  suppressMessages()
+
+
+# SHARPE EQUALITY TESTS NO RF-FREE RATE -----
+
+
+robust_sharpes <- function(x) {
+  r1 <- performances %>% 
+    filter(model == paste0(variations_fin_results[x,1]), 
+           rebalance_freq == as.integer(variations_fin_results[x,2])) %>%
+    rename(time = date) %>% 
+    select(time, strategy_return_1_month) %>% 
+    mutate(strategy_return_1_month = strategy_return_1_month - 1) %>%
+    left_join(equal_weight_monthly_return %>% 
+                rename(time = date) %>% 
+                mutate(equal_weight_return_1_month = equal_weight_return_1_month - 1)) %>% 
+    ungroup() %>% 
+    select(-model, -time) %>%
+    as.matrix()
+  
+  
+  
+  r2 <- sr_equality_test(r1, type = "chisq", alternative = "two.sided", vcov.func = vcov)
+  
+  tibble(
+    model = as.character(variations_fin_results[x,1]),
+    rebalancing = as.integer(variations_fin_results[x,2]),
+    p.value = r2$p.value[[1]],
+    sr1 = r2$SR[[1]],
+    sr2 = r2$SR[[2]])
+  
+}
+
+# TODO: why are SHARPE ratios so much smaller?
+sharpe_equality_tests <- 
+  map(1:nrow(variations_fin_results), ~robust_sharpes(.x)) %>% 
+  reduce(bind_rows)
+
+write.xlsx(sharpe_equality_tests, file = "06_significance_sharpes.xlsx",
+           sheetName="01", append=TRUE)
+
+
+# TEST WITH RF = US ST RATES
+
+
+robust_sharpes_rf <- function(x) {
+  r1 <- performances %>% 
+    filter(model == paste0(variations_fin_results[x,1]), 
+           rebalance_freq == as.integer(variations_fin_results[x,2])) %>%
+    rename(time = date) %>% 
+    select(time, strategy_return_1_month) %>% 
+    mutate(strategy_return_1_month = strategy_return_1_month - 1) %>%
+    left_join(equal_weight_monthly_return %>% 
+                rename(time = date) %>% 
+                mutate(equal_weight_return_1_month = equal_weight_return_1_month - 1)) %>% 
+    ungroup() %>% 
+    select(-model) %>%
+    left_join(rf_usa) %>% 
+    mutate(strategy_return_1_month  = strategy_return_1_month  - s_rate_10_year,
+           equal_weight_return_1_month  = equal_weight_return_1_month  - s_rate_10_year) %>% 
+    select(-time, -s_rate_10_year) %>% 
+    as.matrix()
+  
+  r2 <- sr_equality_test(r1, type = "chisq", alternative = "two.sided", vcov.func = vcov)
+  
+  tibble(
+    model = as.character(variations_fin_results[x,1]),
+    rebalancing = as.integer(variations_fin_results[x,2]),
+    p.value = r2$p.value[[1]],
+    sr1 = r2$SR[[1]],
+    sr2 = r2$SR[[2]])
+  
+}
+
+# TODO: why are SHARPE ratios so much smaller?
+sharpe_equality_tests_rf <- 
+  map(1:nrow(variations_fin_results), ~robust_sharpes_rf(.x)) %>% 
+  reduce(bind_rows)
+
+write.xlsx(sharpe_equality_tests_rf, file = "06_significance_sharpes_rf.xlsx",
+           sheetName="01", append=TRUE)
+
+
+
+
+# TEST AREA SHARPER Package
+sr_test(rnorm(1000,mean=0.5,sd=0.1),zeta=2,ope=1,alternative="greater")
+
+power.sr_test(253,1,0.05,NULL,ope=253)
+power.sr_test(n=NULL,zeta=0.6,sig.level=0.05,power=0.5,ope=253)
+
+power.sropt_test(8,4*253,1,0.05,NULL,ope=253)
+
+predint(rnorm(1000,mean=0.5,sd=0.1),oosdf=127,ope=1)
+
