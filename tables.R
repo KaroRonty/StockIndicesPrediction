@@ -231,12 +231,12 @@ key <- c(AUSTRALIA = "AUS",
 model_acc %>% 
   pivot_wider(values_from = value,
               names_from = model) %>% 
-  filter(errors == "RMSE",
+  filter(errors == "MAE",
          country != "SPAIN") %>% 
   bind_rows(
     # AVERAGE MAPE PER MODEL
     model_acc %>% 
-      filter(errors == "RMSE",
+      filter(errors == "MAE",
              country != "SPAIN") %>%
       group_by(model) %>% 
       summarise(median_MAPE = median(value)) %>% 
@@ -257,10 +257,9 @@ model_acc %>%
          "Median_ens" = ensemble_median_pred,
          "Mean" = mean_prediction,
          "Naive" = naive_prediction) %>% 
-  mutate_at(c("Country"), funs(recode(., !!!key))) 
-  
-  # write.xlsx(., file = "01_MAPE across models.xlsx",
-  #          sheetName="01", append=TRUE) 
+  mutate_at(c("Country"), funs(recode(., !!!key))) %>% 
+  write.xlsx(., file = "01_MAE across models.xlsx",
+           sheetName="01", append=TRUE)
 
   # kbl(caption = "MAPE across all base, meta, and benchmark models", digits = 3, align = "c") %>%
   # kable_classic(full_width = F, html_font = "Cambria") %>% 
@@ -282,11 +281,11 @@ model_acc %>%
                values_to = "value") %>% 
   ungroup() %>% 
   group_by(country, errors, models) %>% 
-  summarise(increase = (1-(value / mean_prediction))) %>% # previously mean_pred / value
+  summarise(increase = (1 - (value / mean_prediction))) %>% # previously mean_pred / value
   pivot_wider(names_from = models,
               values_from = increase) %>% 
   ungroup() %>% 
-  filter(errors == "MAPE",
+  filter(errors == "RMSE",
          country != "SPAIN") %>% 
   group_by(country) %>% 
   summarise_if(is.numeric, median) %>% 
@@ -299,12 +298,12 @@ model_acc %>%
       pivot_longer(cols = c(3:11),
                    names_to = "models",
                    values_to = "value") %>%
-      filter(errors == "MAPE",
+      filter(errors == "RMSE",
              country != "SPAIN") %>% 
       ungroup() %>% 
       group_by(models) %>% 
       summarise(value = median(value),
-                increase = median((1-(value / mean_prediction)))) %>%  # previously mean_pred / value
+                increase = median((1 - (value / mean_prediction)))) %>%  # previously mean_pred / value
       select(models, increase) %>% 
       pivot_wider(names_from = models,
                   values_from = increase) %>% 
@@ -324,11 +323,9 @@ model_acc %>%
            "Median_ens" = ensemble_median_pred) %>% 
   mutate_at(c("Country"), funs(recode(., !!!key))) %>% 
   mutate_if(is.numeric, funs(scales::percent(., accuracy = .1))) %>% 
-  select(Country, XGB_pool, RF_pool, EN_pool, ARIMA, XGB_s, RF_s, Stacking, Mean_ens, Median_ens) 
-  
-  
-  # write.xlsx(., file = "02_mape_inc_relative.xlsx",
-  #            sheetName="01", append=TRUE)
+  select(Country, XGB_pool, RF_pool, EN_pool, ARIMA, XGB_s, RF_s, Stacking, Mean_ens, Median_ens) %>% 
+  write.xlsx(., file = "02_rmse_inc_relative.xlsx",
+             sheetName="01", append=TRUE)
 
 
   # kbl(caption = "Improvement in MAPE compared to Mean Forecast [in percent]", digits = 2, align = "c") %>%
@@ -339,4 +336,27 @@ model_acc %>%
   # column_spec(7, border_right = T) %>% 
   # # column_spec(10, border_right = T) %>% 
   # row_spec(8, bold = T, color = "black", background = "#DCDCDC")
+
+
+# CORRELATION TABLE -----
+
+corrr_models <- map(1:8, ~preds_vs_actuals %>% 
+      filter(country == as.character(countries_to_predict[.x])) %>% 
+      select(-mean_prediction, -naive_prediction, -date, -country) %>% 
+      corrr::correlate() %>% 
+      slice(1) %>% 
+      select(-term, -actual) %>% 
+      mutate(country = as.character(countries_to_predict[.x])) %>% 
+      relocate(country, .before = xgboost_pred)) %>% 
+  reduce(bind_rows) 
+
+corrr_models %>% 
+  filter(country != "SPAIN") %>% 
+  write.xlsx(., file = "10_correlation.xlsx",
+             sheetName="01", append=TRUE)
+
+ 
+
+
+
   
