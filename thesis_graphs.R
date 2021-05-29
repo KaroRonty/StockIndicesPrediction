@@ -184,7 +184,6 @@ to_model_exploration %>%
 # 2.) better properties of cagr vs. normal returns (based on mean, variance, distribution)
 
 
-
 # EDA: DISTRIBUTION OF CAGR VS. DISTRIBUTION OF RETURNS
 
 
@@ -363,86 +362,3 @@ preds_vs_actuals %>%
   select(date, country, actual, ensemble_mean_pred, ensemble_median_pred, stack_pred) %>%
   filter(country %in% countries_to_predict) %>% 
   GGally::ggpairs(columns = 3:6)
-
-# SIGNAL-TO-NOISE RATIO ANALYSIS
-
-# statistically significant difference between models in terms of forecast accuracy
-
-# vector for model combinations
-base_models <- c("xgboost_pred", "rf_pred", "elastic_pred", 
-                 "arima_single_pred", "xgboost_single_pred", "rf_single_pred", 
-                 "stack_pred", "ensemble_mean_pred", "ensemble_median_pred")
-base_models2 <- c("mean_prediction")
-horizons <- c(1,12,60,120)
-
-mc <- crossing(countries_to_predict, base_models, base_models2, horizons)
-
-# DM TEST FOR SIGNIFICANT DIFFERENT FORECAST ERRORS -----
-
-# function to calculate DMs
-
-DM_tests <- function(x) {
-  tt <- preds_vs_actuals %>%
-    filter(country %in% countries_to_predict) %>% 
-    filter(country == paste0(mc[x,1])) %>%
-    mutate(period = row_number()) %>% # period number necessary for DM.test function
-    # select(period, actual, xgboost_pred, rf_pred, elastic_pred, arima_pred, mean_pred) %>% 
-    select(period, actual, paste(mc[x,2]), paste(mc[x,3])) %>%
-    as.matrix()
-  
-  DM.test(tt[,3], 
-          tt[,4], 
-          tt[,2], 
-          # SE for squared scaled error 
-          loss.type = "SE", h = 12, H1 = "more") %>% pluck(4) %>% 
-    tibble(p.value = .,
-           Country = paste(mc[x, 1]),
-           Model = paste(mc[x, 2]),
-           CompModel = paste(mc[1, 3]),
-           h = mc[x,4] %>% as.integer())
-}
-
-# wrap results in map
-dm_test <- 
-  map(1:nrow(mc), ~DM_tests(.x)) %>% 
-  reduce(bind_rows) %>% 
-  write.xlsx(., file = "04_significances.xlsx",
-                        sheetName="01", append=TRUE)
-
-
-
-# ns
-dm_test %>% filter(p.value > 0.05,
-                   h == 60,
-                   Country != "SPAIN") %>% View()
-
-# *
-dm_test %>% filter(p.value > 0.01 & p.value <= 0.05,
-                   h == 60,
-                   Country != "SPAIN") %>% View()
-# **
-dm_test %>% filter(p.value > 0.001 & p.value <= 0.01,
-                   h == 60,
-                   Country != "SPAIN") %>% View()
-# ***
-dm_test %>% filter(p.value <= 0.001,
-                   h == 60,
-                   Country != "SPAIN") %>% View()
-
-
-
-
-
-# I assume that the signal to noise ratio, e.g., measured by 
-# 1 minus the variance of forecast errors divided by the variance of the returns, 
-# is very small, whichever model you use.
-
-
-signal_to_noise <- preds_vs_actuals %>% 
-  filter(country %in% countries_to_predict) %>% 
-  group_by(country) %>% 
-  summarise(stn_xgboost = 1 - (var(actual - xgboost_pred) / var(actual)),
-            stn_rf = 1 - (var(actual - rf_pred) / var(actual)),
-            stn_en = 1 - (var(actual - elastic_pred) / var(actual)),
-            stn_arima = 1 - (var(actual - arima_pred) / var(actual)),
-            stn_mean = 1 - (var(actual - mean_pred) / var(actual))) 
