@@ -15,4 +15,4 @@ predictors <- c("cape", "dividend_yield",
                 "s_rate_10_year", "cpi") 
 
 countries_to_predict <- c("AUSTRALIA", "CANADA", "USA", "UK", 
-                          "NETHERLANDS", "GERMANY", "SPAIN", "SWITZERLAND")
+                          "NETHERLANDS", "GERMANY", "SWITZERLAND")
