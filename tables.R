@@ -1,4 +1,6 @@
-library(kableExtra)
+library(multDM)
+
+preds_vs_actuals <-  preds_vs_actuals %>% filter(country %in% countries_to_predict)
 
 # DATA SET-UP
 model_set <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_single_pred", "xgboost_single_pred", "rf_single_pred", 
@@ -41,16 +43,12 @@ model_acc %>%
       mutate(country = "MEDIAN")
     ) %>% 
   rename("Country" = country,
-         "XGB_pool" = xgboost,
-         "RF_pool" = rf,
-         "EN_pool" = elastic,
-         "ARIMA" = arima_single,
-         "XGB_s" = xgboost_single,
-         "RF_s" = rf_single) %>% 
-  kbl(caption = "MAPE Comparison across Base-Models", digits = 3, align = "c") %>%
-  kable_classic(full_width = F, html_font = "Cambria") %>% 
-  add_header_above(c(" " = 1, "Pooled Models" = 3, "Single-Country Models" = 3)) %>% 
-  row_spec(9, bold = T, color = "black", background = "#DCDCDC")
+         "XGB_pool" = xgboost_pred,
+         "RF_pool" = rf_pred,
+         "EN_pool" = elastic_pred,
+         "ARIMA" = arima_single_pred,
+         "XGB_s" = xgboost_single_pred,
+         "RF_s" = rf_single_pred)
 
 
 # GROUPED MODEL ACCURACY BY MODEL -----
@@ -69,152 +67,6 @@ model_acc %>%
               names_from = errors) %>% 
   arrange(MAPE)
 
-# ACCURACY INCREASE BY MODEL AND COMPARED TO BENCHMARK -----
-model_acc %>% 
-  pivot_wider(names_from = model,
-              values_from = value) %>% 
-  pivot_longer(cols = c("xgboost", "rf", "elastic", "arima_single", "xgboost_single", "rf_single"),
-               names_to = "base_models",
-               values_to = "value") %>% 
-  ungroup() %>% 
-  group_by(country, errors, base_models) %>% 
-  summarise(increase = ((mean_prediction - value) / value) * 100) %>% 
-  pivot_wider(names_from = base_models,
-              values_from = increase) %>% 
-  filter(errors == "MAPE") %>%
-  mutate_if(is.numeric, round, 3) 
-  
-# ACCURACY INCREASE BY MODEL, OVER COUNTRIES, AND COMPARED TO BENCHMARK -----
-model_acc %>% 
-  pivot_wider(names_from = model,
-              values_from = value) %>% 
-  pivot_longer(cols = c("xgboost", "rf", "elastic", "arima_single", "xgboost_single", "rf_single"),
-               names_to = "base_models",
-               values_to = "value") %>% 
-  ungroup() %>% 
-  group_by(country, errors, base_models) %>% 
-  summarise(increase = ((mean_prediction - value) / value) * 100) %>% 
-  pivot_wider(names_from = base_models,
-              values_from = increase) %>% 
-  ungroup() %>% 
-  filter(errors == "MAPE") %>% 
-  group_by(country) %>% 
-  summarise_if(is.numeric, median) %>% 
-  mutate_if(is.numeric, round, 3) %>% 
-  select(country, xgboost, rf, elastic, arima_single, xgboost_single, rf_single) %>% 
-  bind_rows(
-    model_acc %>% 
-      pivot_wider(names_from = model,
-                  values_from = value) %>% 
-      select(errors, xgboost, rf, elastic, arima_single, xgboost_single, rf_single, mean_prediction) %>% 
-      pivot_longer(cols = c("xgboost", "rf", "elastic", "arima_single", "xgboost_single", "rf_single"),
-                   names_to = "base_models",
-                   values_to = "value") %>%
-      filter(errors == "MAPE") %>% 
-      ungroup() %>% 
-      group_by(base_models) %>% 
-      summarise(value = median(value),
-                increase = median(((mean_prediction - value) / value) * 100)) %>% 
-      select(base_models, increase) %>% 
-      pivot_wider(names_from = base_models,
-                  values_from = increase) %>% 
-      ungroup() %>% 
-      summarise_if(is.numeric, median) %>% 
-      mutate_if(is.numeric, round, 3) %>% 
-      mutate(country = "AVERAGE")
-  ) %>% 
-  rename("Country" = country,
-         "XGB_pool" = xgboost,
-         "RF_pool" = rf,
-         "EN_pool" = elastic,
-         "ARIMA" = arima_single,
-         "XGB_s" = xgboost_single,
-         "RF_s" = rf_single) %>% 
-  kbl(caption = "Improvement in Predictive Performance relative to Mean Forecast", digits = 2, align = "c") %>%
-  kable_classic(full_width = F, html_font = "Cambria") %>% 
-  add_header_above(c(" " = 1, "Pooled Models" = 3, "Single-Country Models" = 3))  %>% 
-  row_spec(9, bold = T, color = "black", background = "#DCDCDC")
-  
-
-# TODO: thesis, argue why arima is better (because significant increase across spain etc.)
-
- 
-
-# META-MODEL ACCURACY + AVERAGE ACCURACY PER MODEL -----
-
-model_acc %>% 
-  pivot_wider(values_from = value,
-              names_from = model) %>% 
-  filter(errors == "MAPE") %>% 
-  select(country, errors, stack_pred, ensemble_mean_pred, ensemble_median_pred) %>% 
-  bind_rows(
-    # AVERAGE MAPE PER MODEL
-    model_acc %>% 
-      filter(errors == "MAPE") %>%
-      group_by(model) %>% 
-      summarise(median_MAPE = median(value)) %>% 
-      pivot_wider(values_from = median_MAPE,
-                  names_from = model) %>% 
-      select(stack_pred, ensemble_mean_pred, ensemble_median_pred) %>% 
-      mutate(country = "MEDIAN")
-  ) %>% 
-  select(-errors) %>% 
-  rename("Stacking" = stack_pred,
-         "Mean Ensemble" = ensemble_mean_pred,
-         "Median Ensemble" = ensemble_median_pred) %>% 
-  kbl(caption = "MAPE Comparison across Meta-Models", digits = 3, align = "c") %>%
-  kable_classic(full_width = F, html_font = "Cambria") %>% 
-  # add_header_above(c(" " = 1, "Pooled Models" = 3, "Single-Country Models" = 3)) %>% 
-  row_spec(9, bold = T, color = "black", background = "#DCDCDC")
-    
-# META-MODEL: ACCURACY INCREASE BY MODEL, OVER COUNTRIES, AND COMPARED TO BENCHMARK -----
-model_acc %>% 
-  pivot_wider(names_from = model,
-              values_from = value) %>%
-  select(country, errors, stack_pred, ensemble_mean_pred, ensemble_median_pred, mean_prediction) %>% 
-  pivot_longer(cols = 3:5,
-               names_to = "ensemble_models",
-               values_to = "value") %>% 
-  ungroup() %>% 
-  group_by(country, errors, ensemble_models) %>% 
-  summarise(increase = ((mean_prediction - value) / value) * 100) %>% 
-  pivot_wider(names_from = ensemble_models,
-              values_from = increase) %>% 
-  ungroup() %>% 
-  filter(errors == "MAPE") %>% 
-  group_by(country) %>% 
-  summarise_if(is.numeric, median) %>% 
-  mutate_if(is.numeric, round, 3) %>% 
-  bind_rows(
-    model_acc %>% 
-      pivot_wider(names_from = model,
-                  values_from = value) %>% 
-      select(country, errors, stack_pred, ensemble_mean_pred, ensemble_median_pred, mean_prediction) %>% 
-      pivot_longer(cols = 3:5,
-                   names_to = "ensemble_models",
-                   values_to = "value") %>%
-      filter(errors == "MAPE") %>% 
-      ungroup() %>% 
-      group_by(ensemble_models) %>% 
-      summarise(value = median(value),
-                increase = median(((mean_prediction - value) / value) * 100)) %>% 
-      select(ensemble_models, increase) %>% 
-      pivot_wider(names_from = ensemble_models,
-                  values_from = increase) %>% 
-      ungroup() %>% 
-      summarise_if(is.numeric, median) %>% 
-      mutate_if(is.numeric, round, 3) %>% 
-      mutate(country = "MEDIAN")
-  ) %>% 
-  select(country, stack_pred, ensemble_mean_pred, ensemble_median_pred) %>% 
-  rename("Stacking" = stack_pred,
-         "Mean Ensemble" = ensemble_mean_pred,
-         "Median Ensemble" = ensemble_median_pred) %>% 
-  
-  kbl(caption = "Improvement in Predictive Performance relative to Mean Forecast", digits = 2, align = "c") %>%
-  kable_classic(full_width = F, html_font = "Cambria") %>% 
-  # add_header_above(c(" " = 1, "Pooled Models" = 3, "Single-Country Models" = 3))  %>% 
-  row_spec(9, bold = T, color = "black", background = "#DCDCDC")
 
 # BASE & META-MODEL ACCURACY + AVERAGE ACCURACY PER MODEL -----
 
@@ -222,7 +74,6 @@ key <- c(AUSTRALIA = "AUS",
          CANADA = "CAN",
          GERMANY = "DEU",
          NETHERLANDS = "NLD",
-         SPAIN = "ESP",
          SWITZERLAND = "CHE",
          UK = "GBR",
          USA = "USA",
@@ -260,15 +111,6 @@ model_acc %>%
   mutate_at(c("Country"), funs(recode(., !!!key))) %>% 
   write.xlsx(., file = "01_MAE across models.xlsx",
            sheetName="01", append=TRUE)
-
-  # kbl(caption = "MAPE across all base, meta, and benchmark models", digits = 3, align = "c") %>%
-  # kable_classic(full_width = F, html_font = "Cambria") %>% 
-  # add_header_above(c(" " = 1, "Pooled" = 3, "Single-Country" = 3, "Ensembles" = 3, "Benchmark" = 2)) %>%
-  # add_header_above(c(" " = 1, "Base" = 6, "Meta" = 3, " " = 2)) %>% 
-  # column_spec(1, bold = T, border_right = T) %>% 
-  # column_spec(7, border_right = T) %>% 
-  # column_spec(10, border_right = T) %>% 
-  # row_spec(9, bold = T, color = "black", background = "#DCDCDC")
 
 
 # BASE & META-MODEL: ACCURACY INCREASE BY MODEL, OVER COUNTRIES, AND COMPARED TO BENCHMARK -----
@@ -328,16 +170,6 @@ model_acc %>%
              sheetName="01", append=TRUE)
 
 
-  # kbl(caption = "Improvement in MAPE compared to Mean Forecast [in percent]", digits = 2, align = "c") %>%
-  # kable_classic(full_width = F, html_font = "Cambria") %>% 
-  # add_header_above(c(" " = 1, "Pooled" = 3, "Single-Country" = 3, "Ensembles" = 3)) %>%
-  # add_header_above(c(" " = 1, "Base" = 6, "Meta" = 3)) %>% 
-  # column_spec(1, bold = T, border_right = T) %>% 
-  # column_spec(7, border_right = T) %>% 
-  # # column_spec(10, border_right = T) %>% 
-  # row_spec(8, bold = T, color = "black", background = "#DCDCDC")
-
-
 # CORRELATION TABLE -----
 
 corrr_models <- map(1:8, ~preds_vs_actuals %>% 
@@ -355,7 +187,76 @@ corrr_models %>%
   write.xlsx(., file = "10_correlation.xlsx",
              sheetName="01", append=TRUE)
 
- 
+
+
+
+# DIEBOLD-MARIANO TESTS ----
+
+# statistically significant difference between models in terms of forecast accuracy
+
+# vector for model combinations
+base_models <- c("xgboost_pred", "rf_pred", "elastic_pred", 
+                 "arima_single_pred", "xgboost_single_pred", "rf_single_pred", 
+                 "stack_pred", "ensemble_mean_pred", "ensemble_median_pred")
+base_models2 <- c("mean_prediction")
+horizons <- c(1,12,60,120)
+
+mc <- crossing(countries_to_predict, base_models, base_models2, horizons)
+
+
+
+# function to calculate DMs
+
+DM_tests <- function(x) {
+  tt <- preds_vs_actuals %>%
+    filter(country %in% countries_to_predict) %>% 
+    filter(country == paste0(mc[x,1])) %>%
+    mutate(period = row_number()) %>% # period number necessary for DM.test function
+    # select(period, actual, xgboost_pred, rf_pred, elastic_pred, arima_pred, mean_pred) %>% 
+    select(period, actual, paste(mc[x,2]), paste(mc[x,3])) %>%
+    as.matrix()
+  
+  DM.test(tt[,3], 
+          tt[,4], 
+          tt[,2], 
+          # SE for squared scaled error 
+          loss.type = "SE", h = 12, H1 = "more") %>% pluck(4) %>% 
+    tibble(p.value = .,
+           Country = paste(mc[x, 1]),
+           Model = paste(mc[x, 2]),
+           CompModel = paste(mc[1, 3]),
+           h = mc[x,4] %>% as.integer())
+}
+
+# wrap results in map
+dm_test <- 
+  map(1:nrow(mc), ~DM_tests(.x)) %>% 
+  reduce(bind_rows) %>% 
+  write.xlsx(., file = "04_significances.xlsx",
+             sheetName="01", append=TRUE)
+
+
+
+# ns
+dm_test %>% filter(p.value > 0.05,
+                   h == 60,
+                   Country != "SPAIN") %>% View()
+
+# *
+dm_test %>% filter(p.value > 0.01 & p.value <= 0.05,
+                   h == 60,
+                   Country != "SPAIN") %>% View()
+# **
+dm_test %>% filter(p.value > 0.001 & p.value <= 0.01,
+                   h == 60,
+                   Country != "SPAIN") %>% View()
+# ***
+dm_test %>% filter(p.value <= 0.001,
+                   h == 60,
+                   Country != "SPAIN") %>% View()
+
+
+
 
 
 
