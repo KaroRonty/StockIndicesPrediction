@@ -347,14 +347,14 @@ variations_fin_results <- performances %>%
   filter(model != "benchmark")
 
 # risk free rate USA
-rf_usa <- s_rate_10_year_long %>%
+rf_usa <- rate_10_year_long %>%
   filter(country == "USA", date > yearmonth("2005 Jul")) %>%
   rename(time = date) %>%
-  select(time, s_rate_10_year) %>%
+  select(time, rate_10_year) %>%
   # impute missing fields
   imputeTS::na_ma(k = 4, weighting = "simple") %>%
   # transfer from annualized (usual data format for yields) to monthly yield
-  mutate(s_rate_10_year = (1 + (s_rate_10_year / 100))^(1 / 12) - 1)
+  mutate(rate_10_year = (1 + (rate_10_year / 100))^(1 / 12) - 1)
 
 
 # SHARPE RISK-FREE BASED RESULTS -----
@@ -368,8 +368,8 @@ sharpe_significance_rf <- function(x) {
                 mutate(strategy_return_1_month = strategy_return_1_month - 1) %>%
                 # add risk free rate
                 left_join(rf_usa) %>% 
-                mutate(strategy_return_1_month  = strategy_return_1_month  - s_rate_10_year) %>% 
-                select(-model, -s_rate_10_year) %>% 
+                mutate(strategy_return_1_month  = strategy_return_1_month  - rate_10_year) %>% 
+                select(-model, -rate_10_year) %>% 
                 ts_xts(),
                 c0 = 0, # added in x 
               ope = 12, 
@@ -432,8 +432,8 @@ as.sr(x = equal_weight_monthly_return %>%
         rename(time = date) %>% 
         mutate(equal_weight_return_1_month = equal_weight_return_1_month - 1) %>% 
         left_join(rf_usa) %>% 
-        mutate(equal_weight_return_1_month  = equal_weight_return_1_month  - s_rate_10_year) %>% 
-        select(-s_rate_10_year) %>% 
+        mutate(equal_weight_return_1_month  = equal_weight_return_1_month  - rate_10_year) %>% 
+        select(-rate_10_year) %>% 
         ts_xts(),
       c0 = 0, # added in x 
       ope = 12, 
@@ -457,9 +457,9 @@ robust_sharpes_rf <- function(x) {
     ungroup() %>% 
     select(-model) %>%
     left_join(rf_usa) %>% 
-    mutate(strategy_return_1_month  = strategy_return_1_month  - s_rate_10_year,
-           equal_weight_return_1_month  = equal_weight_return_1_month  - s_rate_10_year) %>% 
-    select(-time, -s_rate_10_year) %>% 
+    mutate(strategy_return_1_month  = strategy_return_1_month  - rate_10_year,
+           equal_weight_return_1_month  = equal_weight_return_1_month  - rate_10_year) %>% 
+    select(-time, -rate_10_year) %>% 
     as.matrix()
   
   r2 <- sr_equality_test(r1, type = "chisq", alternative = "two.sided", vcov.func = vcov)
