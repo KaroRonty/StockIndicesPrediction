@@ -1,14 +1,11 @@
+library(xlsx)
 library(tsbox)
-library(kableExtra)
+library(SharpeR)
 library(PerformanceAnalytics)
 
 n_countries_to_invest_in <- 3
 n_rebalances <- c(1, 2, 3)
 plot_max_date <- "2020 Aug"
-
-preds_vs_actuals <- preds_vs_actuals %>% 
-  filter(country %in% countries_to_predict, 
-         country != "SPAIN")
 
 evaluate_financial_performance <- function(n_rebalance){
   
@@ -343,7 +340,6 @@ ggsave("Results_Financial Performance and Rebalancing.png", path = "Plots",
 # our sharpe is annualized, rebalancing does not affect to number of 
 
 
-library(SharpeR)
 
 # model and rebalancing variations
 variations_fin_results <- performances %>% 
@@ -355,46 +351,13 @@ rf_usa <- s_rate_10_year_long %>%
   filter(country == "USA", date > yearmonth("2005 Jul")) %>%
   rename(time = date) %>%
   select(time, s_rate_10_year) %>%
+  # impute missing fields
   imputeTS::na_ma(k = 4, weighting = "simple") %>%
-  # transfer from annualized to yearly yield
+  # transfer from annualized (usual data format for yields) to monthly yield
   mutate(s_rate_10_year = (1 + (s_rate_10_year / 100))^(1 / 12) - 1)
 
 
-sharpe_significance <- function(x) {
-  a1 <- as.sr(x = performances %>% 
-                filter(model == paste0(variations_fin_results[x,1]), 
-                       rebalance_freq == as.integer(variations_fin_results[x,2])) %>%
-                rename(time = date) %>% 
-                select(time, strategy_return_1_month) %>% 
-                mutate(strategy_return_1_month = strategy_return_1_month - 1) %>%
-                ts_xts(),
-              # c0 = (1 + 0.016)^(1 / 12) - 1,
-              c0 = 0, # FIXME
-              ope = 12, 
-              na.rm = T) %>% 
-    suppressMessages()
-  
-  a2 <- confint(a1, 
-          level = 0.95,
-          type = "exact")
-  
-    tibble(model = as.character(variations_fin_results[x,1]),
-           rebalancing = as.integer(variations_fin_results[x,2]),
-           upper = a2[2],
-           bottom = a2[1],
-           sr = a1$sr[1])
-  
-}
-
-sharpe_full <- 
-  map(1:nrow(variations_fin_results), ~sharpe_significance(.x)) %>% 
-  reduce(bind_rows) 
-  
-write.xlsx(sharpe_full, file = "05_new_sharpes.xlsx",
-             sheetName="01", append=TRUE)
-
-
-# SHARPE RF BASED RESULTS -----
+# SHARPE RISK-FREE BASED RESULTS -----
 
 sharpe_significance_rf <- function(x) {
   a1 <- as.sr(x = performances %>% 
@@ -432,7 +395,39 @@ sharpe_full_rf <-
 write.xlsx(sharpe_full_rf, file = "05_new_sharpes_rf.xlsx",
            sheetName="01", append=TRUE)
 
-# SR Equal-Weight Benchmark 
+# SR EQUAL-WEIGHT BENCHMARK -------
+# calcuating real returns 
+investing_dates <- seq.Date(as_date(yearmonth("2005 Aug")),
+                            as_date(yearmonth("2020 Aug")), 
+                            length.out = 0 + 1) %>% 
+  yearmonth()
+
+years_in_data <- investing_dates %>% 
+  tibble(date = .) %>% 
+  filter(date <= yearmonth(plot_max_date)) %>% 
+  summarise(years_in_data = (last(date) - first(date)) / 12) %>% 
+  pull(years_in_data)
+
+next_month_returns <- prices_local_long %>% 
+  as_tibble() %>% 
+  select(date, country, return_next_1_month) %>%
+  na.omit() %>% 
+  filter(country %in% countries_to_predict,
+         date >= min(investing_dates),
+         date <= yearmonth(plot_max_date)) %>%
+  group_by_all() %>% 
+  mutate(rebalancing_group = 
+           which(date <= yearmonth(investing_dates)[-1])[1]) %>% 
+  ungroup()
+
+monthly_returns <- next_month_returns %>% 
+  suppressMessages()
+
+equal_weight_monthly_return <- next_month_returns %>%
+  group_by(date) %>%
+  summarise(equal_weight_return_1_month = mean(return_next_1_month))
+
+# calculating equal-weight SR 
 as.sr(x = equal_weight_monthly_return %>% 
         rename(time = date) %>% 
         mutate(equal_weight_return_1_month = equal_weight_return_1_month - 1) %>% 
@@ -446,46 +441,7 @@ as.sr(x = equal_weight_monthly_return %>%
   suppressMessages()
 
 
-# SHARPE EQUALITY TESTS NO RF-FREE RATE -----
-
-
-robust_sharpes <- function(x) {
-  r1 <- performances %>% 
-    filter(model == paste0(variations_fin_results[x,1]), 
-           rebalance_freq == as.integer(variations_fin_results[x,2])) %>%
-    rename(time = date) %>% 
-    select(time, strategy_return_1_month) %>% 
-    mutate(strategy_return_1_month = strategy_return_1_month - 1) %>%
-    left_join(equal_weight_monthly_return %>% 
-                rename(time = date) %>% 
-                mutate(equal_weight_return_1_month = equal_weight_return_1_month - 1)) %>% 
-    ungroup() %>% 
-    select(-model, -time) %>%
-    as.matrix()
-  
-  
-  
-  r2 <- sr_equality_test(r1, type = "chisq", alternative = "two.sided", vcov.func = vcov)
-  
-  tibble(
-    model = as.character(variations_fin_results[x,1]),
-    rebalancing = as.integer(variations_fin_results[x,2]),
-    p.value = r2$p.value[[1]],
-    sr1 = r2$SR[[1]],
-    sr2 = r2$SR[[2]])
-  
-}
-
-# TODO: why are SHARPE ratios so much smaller?
-sharpe_equality_tests <- 
-  map(1:nrow(variations_fin_results), ~robust_sharpes(.x)) %>% 
-  reduce(bind_rows)
-
-write.xlsx(sharpe_equality_tests, file = "06_significance_sharpes.xlsx",
-           sheetName="01", append=TRUE)
-
-
-# TEST WITH RF = US ST RATES
+# EQUALITY TEST WITH RISK FREE RATES -----
 
 
 robust_sharpes_rf <- function(x) {
@@ -511,30 +467,14 @@ robust_sharpes_rf <- function(x) {
   tibble(
     model = as.character(variations_fin_results[x,1]),
     rebalancing = as.integer(variations_fin_results[x,2]),
-    p.value = r2$p.value[[1]],
-    sr1 = r2$SR[[1]],
-    sr2 = r2$SR[[2]])
+    p.value = r2$p.value[[1]])
   
 }
 
-# TODO: why are SHARPE ratios so much smaller?
 sharpe_equality_tests_rf <- 
   map(1:nrow(variations_fin_results), ~robust_sharpes_rf(.x)) %>% 
   reduce(bind_rows)
 
 write.xlsx(sharpe_equality_tests_rf, file = "06_significance_sharpes_rf.xlsx",
            sheetName="01", append=TRUE)
-
-
-
-
-# TEST AREA SHARPER Package
-sr_test(rnorm(1000,mean=0.5,sd=0.1),zeta=2,ope=1,alternative="greater")
-
-power.sr_test(253,1,0.05,NULL,ope=253)
-power.sr_test(n=NULL,zeta=0.6,sig.level=0.05,power=0.5,ope=253)
-
-power.sropt_test(8,4*253,1,0.05,NULL,ope=253)
-
-predint(rnorm(1000,mean=0.5,sd=0.1),oosdf=127,ope=1)
 
