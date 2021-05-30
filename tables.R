@@ -1,3 +1,4 @@
+library(xlsx)
 library(multDM)
 
 preds_vs_actuals <-  preds_vs_actuals %>% filter(country %in% countries_to_predict)
@@ -82,13 +83,11 @@ key <- c(AUSTRALIA = "AUS",
 model_acc %>% 
   pivot_wider(values_from = value,
               names_from = model) %>% 
-  filter(errors == "MAE",
-         country != "SPAIN") %>% 
+  filter(errors == "MAE") %>% 
   bind_rows(
     # AVERAGE MAPE PER MODEL
     model_acc %>% 
-      filter(errors == "MAE",
-             country != "SPAIN") %>%
+      filter(errors == "MAE") %>%
       group_by(model) %>% 
       summarise(median_MAPE = median(value)) %>% 
       pivot_wider(values_from = median_MAPE,
@@ -127,8 +126,7 @@ model_acc %>%
   pivot_wider(names_from = models,
               values_from = increase) %>% 
   ungroup() %>% 
-  filter(errors == "RMSE",
-         country != "SPAIN") %>% 
+  filter(errors == "RMSE") %>% 
   group_by(country) %>% 
   summarise_if(is.numeric, median) %>% 
   mutate_if(is.numeric, round, 3) %>% 
@@ -140,8 +138,7 @@ model_acc %>%
       pivot_longer(cols = c(3:11),
                    names_to = "models",
                    values_to = "value") %>%
-      filter(errors == "RMSE",
-             country != "SPAIN") %>% 
+      filter(errors == "RMSE") %>% 
       ungroup() %>% 
       group_by(models) %>% 
       summarise(value = median(value),
@@ -183,7 +180,6 @@ corrr_models <- map(1:8, ~preds_vs_actuals %>%
   reduce(bind_rows) 
 
 corrr_models %>% 
-  filter(country != "SPAIN") %>% 
   write.xlsx(., file = "10_correlation.xlsx",
              sheetName="01", append=TRUE)
 
@@ -239,21 +235,17 @@ dm_test <-
 
 # ns
 dm_test %>% filter(p.value > 0.05,
-                   h == 60,
-                   Country != "SPAIN") %>% View()
+                   h == 60) %>% View()
 
 # *
 dm_test %>% filter(p.value > 0.01 & p.value <= 0.05,
-                   h == 60,
-                   Country != "SPAIN") %>% View()
+                   h == 60) %>% View()
 # **
 dm_test %>% filter(p.value > 0.001 & p.value <= 0.01,
-                   h == 60,
-                   Country != "SPAIN") %>% View()
+                   h == 60) %>% View()
 # ***
 dm_test %>% filter(p.value <= 0.001,
-                   h == 60,
-                   Country != "SPAIN") %>% View()
+                   h == 60) %>% View()
 
 
 
