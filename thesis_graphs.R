@@ -1,7 +1,5 @@
 library(corrr)
 library(dplyr)
-library(multDM)
-library(tsibble)
 library(ggplot2)
 library(ggforce)
 
@@ -131,8 +129,7 @@ plot_segmentation +
 # GRAPH: EXPLAINABILITY OF CAGR BY INCREASING CAGR PRIOD  -------
   
 corr_cagr_cape <- to_model_exploration %>% 
-  filter(country %in% countries_to_predict,
-         country != "SPAIN") %>% 
+  filter(country %in% countries_to_predict) %>% 
   as_tibble() %>% 
   select(-tail(names(.),5), -date, -country) %>% 
   corrr::correlate(quiet = T) %>% 
@@ -265,8 +262,7 @@ prices_local_long %>%
 # GRAPH CONTAINING ALL BASE FORECASTS PER COUNTRY   -------
 
 preds_vs_actuals %>% 
-  filter(country %in% countries_to_predict,
-         country != "SPAIN") %>% 
+  filter(country %in% countries_to_predict) %>% 
   pivot_longer(cols = c("actual", "xgboost_pred", "rf_pred", "elastic_pred", 
                         "xgboost_single_pred","rf_single_pred", "arima_single_pred"),
                names_to = "models",
@@ -326,8 +322,7 @@ preds_vs_actuals %>%
 
 # STACKED AND ENSEMBLE FORECASTS -----
 preds_vs_actuals %>% 
-  filter(country %in% countries_to_predict,
-         country != "SPAIN") %>% 
+  filter(country %in% countries_to_predict) %>% 
   pivot_longer(cols = c("actual", "ensemble_mean_pred", "ensemble_median_pred", "stack_pred"),
                names_to = "model",
                values_to = "pred") %>% 
