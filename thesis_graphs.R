@@ -199,41 +199,40 @@ prices_local_long <- suppressMessages(
       ~add_return(prices_local_long, .x)) %>% 
     reduce(inner_join))
 
-plot_cagr_distribution <-  prices_local_long %>% 
-  filter(date < leakage_start_date, 
-         country %in% countries_to_predict) %>% 
-  select(date, country, cagr_5_year, cagr_1_year) %>% 
-  pivot_longer(cols = 3:4,
-               names_to = "trans",
-               values_to = "value") %>% 
-  ggplot(aes(value, fill = trans)) +
-  geom_histogram(bins = 60, alpha = .6, position = "identity") +
-  facet_wrap(~country, nrow = 2) +
-  labs(x = "CAGR",
-       y = "Density",
-       title = "CAGR Distribution Across Countries and Leads") +
-  theme_bw() +
-  theme(legend.position = "none")
-
-plot_return_distribution <- prices_local_long %>% 
-  filter(date < leakage_start_date, 
-         country %in% countries_to_predict) %>% 
-  select(date, country, return_5_year, return_1_year) %>% 
-  pivot_longer(cols = 3:4,
-               names_to = "trans",
-               values_to = "value") %>% 
-  ggplot(aes(value, fill = trans)) +
-  geom_histogram(bins = 60, alpha = .6, position = "identity") +
-  facet_wrap(~country, nrow = 2) +
-  labs(x = "Return",
-       y = "Density",
-       title = "Return Distribution Across Countries and Leads") +
-  scale_fill_manual(values = trans,
-                    labels = c("1year", "5years")) + #FIXME to 1 and 5 years in legend
-  theme_bw() +
-  theme(legend.position = "bottom", legend.box = "horizontal")
-
-plot_cagr_distribution / plot_return_distribution
+# plot_cagr_distribution <-  prices_local_long %>% 
+#   filter(date < leakage_start_date, 
+#          country %in% countries_to_predict) %>% 
+#   select(date, country, cagr_5_year, cagr_1_year) %>% 
+#   pivot_longer(cols = 3:4,
+#                names_to = "trans",
+#                values_to = "value") %>% 
+#   ggplot(aes(value, fill = trans)) +
+#   geom_histogram(bins = 60, alpha = .6, position = "identity") +
+#   facet_wrap(~country, nrow = 2) +
+#   labs(x = "CAGR",
+#        y = "Density",
+#        title = "CAGR Distribution Across Countries and Leads") +
+#   theme_bw() +
+#   theme(legend.position = "none")
+# 
+# plot_return_distribution <- prices_local_long %>% 
+#   filter(date < leakage_start_date, 
+#          country %in% countries_to_predict) %>% 
+#   select(date, country, return_60_month, return_12_month) %>% 
+#   pivot_longer(cols = 3:4,
+#                names_to = "trans",
+#                values_to = "value") %>% 
+#   ggplot(aes(value, fill = trans)) +
+#   geom_histogram(bins = 60, alpha = .6, position = "identity") +
+#   facet_wrap(~country, nrow = 2) +
+#   labs(x = "Return",
+#        y = "Density",
+#        title = "Return Distribution Across Countries and Leads") +
+#   scale_fill_manual(labels = c("1year", "5years")) + #FIXME to 1 and 5 years in legend
+#   theme_bw() +
+#   theme(legend.position = "bottom", legend.box = "horizontal")
+# 
+# plot_cagr_distribution / plot_return_distribution
 
 
 # -----
@@ -253,11 +252,6 @@ prices_local_long %>%
   theme_bw() +
   theme(legend.position = "bottom", legend.box = "horizontal") +
   guides(colour = guide_legend(nrow = 1))
-
-
-
-  
-  
 
 # GRAPH CONTAINING ALL BASE FORECASTS PER COUNTRY   -------
 

@@ -1,11 +1,11 @@
-if(exists("cl")){
-  print("Starting stack cluster...")
-  stopCluster(cl)
-  rm(cl)
-}
-
-cl <- makePSOCKcluster(parallel::detectCores())
-registerDoParallel(cl)
+# if(exists("cl")){
+#   print("Starting stack cluster...")
+  # stopCluster(cl)
+#   rm(cl)
+# }
+# 
+# cl <- makePSOCKcluster(parallel::detectCores())
+# registerDoParallel(cl)
 
 to_stack <- training_preds_vs_actuals %>% 
   na.omit() %>% 
@@ -89,7 +89,7 @@ stack_workflow <- workflow() %>%
   add_recipe(stack_recipe) %>% 
   add_model(stack_specification)
 
-# 41 min
+# 18 min
 tic_stack <- Sys.time()
 set.seed(1)
 stack_tuning_results <- tune_grid(stack_workflow,
@@ -112,6 +112,9 @@ preds_vs_actuals_stack <- to_stack %>%
   mutate(stack_pred = stack_model %>% 
            predict(stack_test) %>% 
            pull(.pred))
+
+preds_vs_actuals <- preds_vs_actuals_stack %>% 
+  full_join(preds_vs_actuals)
 
 training_preds_vs_actuals_stack <- to_stack %>% 
   filter(country %in% countries_to_predict,

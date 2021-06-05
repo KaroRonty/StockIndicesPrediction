@@ -13,7 +13,8 @@ preds_vs_actuals_ensemble <- preds_vs_actuals %>%
                                          arima_single_pred,
                                          xgboost_single_pred,
                                          rf_single_pred))) %>% 
-  ungroup()
+  ungroup() %>% 
+  select(date, country, actual, ensemble_mean_pred, ensemble_median_pred)
 
 training_preds_vs_actuals_ensemble <- training_preds_vs_actuals %>% 
   filter(country %in% countries_to_predict) %>% 
@@ -30,7 +31,12 @@ training_preds_vs_actuals_ensemble <- training_preds_vs_actuals %>%
                                          arima_single_pred,
                                          xgboost_single_pred,
                                          rf_single_pred))) %>% 
-  ungroup()
+  ungroup() %>% 
+  select(date, country, actual, ensemble_mean_pred, ensemble_median_pred)
+
+preds_vs_actuals <- preds_vs_actuals %>% 
+  select(-xgboost:-set) %>% 
+  full_join(preds_vs_actuals_ensemble)
 
 pred_plot_ensemble_mean <- preds_vs_actuals_ensemble %>% 
   pivot_longer(c(actual, ensemble_mean_pred)) %>% 
@@ -91,6 +97,6 @@ preds_vs_actuals_ensemble %>%
       median(abs(((actual) - ensemble_median_pred) / actual)),
     mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>% 
   ungroup() %>% 
-  summarise_if(is.numeric, mean) %>% 
+  summarise_if(is.numeric, median) %>% 
   suppressMessages() %>% 
   print()

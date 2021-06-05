@@ -72,7 +72,7 @@ ale_continuous_clean <- ale_training %>%
     feature == "s_rate_10_year" ~ "Short-term interest rate",
     feature == "unemployment" ~ "Unemployment"))
 
-ale_continuous_clean %>% 
+ale_stack_plot <- ale_continuous_clean %>% 
   ggplot(aes(x.values, f.values, color = feature)) +
   geom_line() +
   geom_rug(color = "black", alpha = 0.5, sides = "b") +

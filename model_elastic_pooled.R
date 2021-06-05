@@ -165,7 +165,6 @@ preds_vs_actuals %>%
     mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>% 
   suppressMessages()
 
-
 preds_vs_actuals %>% 
   inner_join(mean_predictions) %>% 
   group_by(country) %>% 

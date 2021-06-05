@@ -153,7 +153,6 @@ pred_vs_actual_mean <- mean_actual_to_plot %>%
 preds_vs_actuals <- preds_vs_actuals %>% 
   left_join(pred_vs_actual_mean)
 
-
 suppressMessages(
   pred_vs_actual_mean %>% 
     inner_join(mean_predictions) %>% 
@@ -171,4 +170,3 @@ suppressMessages(
     ungroup() %>% 
     summarise_if(is.numeric, median)) %>% 
   print()
-

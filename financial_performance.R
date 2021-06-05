@@ -1,6 +1,7 @@
 library(xlsx)
 library(tsbox)
 library(SharpeR)
+library(kableExtra)
 library(PerformanceAnalytics)
 
 n_countries_to_invest_in <- 3
@@ -56,35 +57,6 @@ evaluate_financial_performance <- function(n_rebalance){
                  distinct()) %>% 
     suppressMessages()
   
-  to_sharpe <- monthly_returns %>%
-    select(-rebalancing_group) %>%
-    # TODO
-    # left_join(s_rate_10_year_long) %>%
-    full_join(next_month_returns %>%
-                group_by(date) %>%
-                summarise(return_next_1_month = mean(return_next_1_month)) %>%
-                mutate(model = "benchmark")) %>%
-    mutate(R = return_next_1_month - 1#,
-           # Rf = s_rate_10_year / 100
-    ) %>%
-    group_by(model, date) %>%
-    summarise(R_mean = mean(R)) %>%
-    ungroup() %>%
-    rename(time = date) %>%
-    as_tsibble(key = model) %>%
-    suppressMessages()
-  
-  sharpes <- to_sharpe %>%
-    ts_xts() %>%
-    SharpeRatio.annualized() %>%
-    as_tibble() %>%
-    pivot_longer(everything(),
-                 names_to = "model",
-                 values_to = "Sharpe") %>%
-    mutate(rebalance_freq = n_rebalance) %>%
-    arrange(-Sharpe) %>% 
-    suppressMessages()
-  
   equal_weight_monthly_return <- next_month_returns %>%
     group_by(date) %>%
     summarise(equal_weight_return_1_month = mean(return_next_1_month))
@@ -128,7 +100,6 @@ evaluate_financial_performance <- function(n_rebalance){
     mutate(outperformed = last(strategy) > last(benchmark),
            strategy_return_cum = strategy_return_cum * 100) %>%
     mutate(rebalance_freq = n_rebalance) %>% 
-    full_join(sharpes) %>% 
     left_join(equal_weight_monthly_return_cum %>% 
                 select(date, benchmark_cum = equal_weight_return_1_month) %>% 
                 mutate(benchmark_cum = cumprod(benchmark_cum) * 100)) %>% 
@@ -138,8 +109,6 @@ evaluate_financial_performance <- function(n_rebalance){
 performances <- map(n_rebalances,
                     evaluate_financial_performance) %>% 
   bind_rows()
-
-
 
 performance_to_plot <- performances %>% 
   mutate(model_and_cagr = model %>% 
@@ -169,26 +138,6 @@ performance_to_plot <- performances %>%
                          str_replace("Elastic Net", "EN_p") %>% 
                          str_replace("XGBoost", "XGB_p") %>% 
                          str_replace("Random Forest", "RF_p")))
-         
-
-
-sharpes_to_plot <- performance_to_plot %>% 
-  ungroup() %>% 
-  group_by(model, rebalance_freq) %>% 
-  filter(date == max(date)) %>%
-  ungroup() %>% 
-  select(model,
-         Sharpe,
-         rebalance_freq) %>% 
-  full_join(performance_to_plot %>% 
-              filter(model == "benchmark") %>% 
-              select(model, rebalance_freq, Sharpe))
-
-
-sharpes_to_table <- sharpes_to_plot %>% 
-  pivot_wider(names_from = rebalance_freq, 
-              values_from = Sharpe)
-
 
 years_per_rebalancing_period <- performances %>%
   na.omit() %>% 
@@ -218,13 +167,18 @@ returns_per_rebalancing <- performances %>%
                           values_from = benchmark_cagr) %>% 
               mutate(model = "benchmark", .before = 1))
 
+sharpes_to_table <- sharpe_full_rf %>% 
+  select(-bottom, -upper) %>% 
+  pivot_wider(names_from = rebalancing,
+              values_from = sr)
+
 to_table <- preds_vs_actuals %>% 
   na.omit() %>% 
   pivot_longer(-c("date", "country", "actual"), 
                names_to = "Model",
                values_to = "pred") %>% 
   group_by(country, Model) %>% 
-  summarise(MAPE = mean(abs(((actual) - pred) / actual))) %>% 
+  summarise(MAPE = median(abs(((actual) - pred) / actual))) %>% 
   ungroup() %>% 
   group_by(Model) %>% 
   summarise(`Median MAPE` = median(MAPE)) %>% 
@@ -249,7 +203,7 @@ to_table <- preds_vs_actuals %>%
            str_replace("NAIVE",  "Naive") %>% 
            str_replace("STACK", "Stacking") %>% 
            str_replace("BENCHMARK", "Benchmark")) %>% 
-             
+  
   mutate(`Median MAPE` = scales::number(`Median MAPE` * 1, 0.001) %>% 
            replace_na("")) %>% 
   mutate_at(vars(starts_with("CAGR")),
@@ -288,8 +242,8 @@ to_table %>%
     extra_css = "border-bottom: 1px solid; border-bottom-color: black") %>%
   print()
 
-write.xlsx(to_table, file = "03_financial_performance.xlsx",
-           sheetName="01", append=TRUE)
+# write.xlsx(to_table, file = "03_financial_performance.xlsx",
+#            sheetName="01", append=TRUE)
 
 
 p_cum <- performance_to_plot %>%
@@ -299,7 +253,7 @@ p_cum <- performance_to_plot %>%
              strategy_return_cum, 
              color = factor(rebalance_freq), 
              group = factor(rebalance_freq)
-             )) +
+  )) +
   geom_line() +
   geom_line(aes(date, benchmark_cum),
             inherit.aes = FALSE,
@@ -360,20 +314,21 @@ rf_usa <- rate_10_year_long %>%
 # SHARPE RISK-FREE BASED RESULTS -----
 
 sharpe_significance_rf <- function(x) {
-  a1 <- as.sr(x = performances %>% 
-                filter(model == paste0(variations_fin_results[x,1]), 
-                       rebalance_freq == as.integer(variations_fin_results[x,2])) %>%
-                rename(time = date) %>% 
-                select(time, strategy_return_1_month) %>% 
-                mutate(strategy_return_1_month = strategy_return_1_month - 1) %>%
-                # add risk free rate
-                left_join(rf_usa) %>% 
-                mutate(strategy_return_1_month  = strategy_return_1_month  - rate_10_year) %>% 
-                select(-model, -rate_10_year) %>% 
-                ts_xts(),
-                c0 = 0, # added in x 
-              ope = 12, 
-              na.rm = T) %>% 
+  a1 <- as.sr(
+    x = performances %>% 
+      filter(model == paste0(variations_fin_results[x,1]), 
+             rebalance_freq == as.integer(variations_fin_results[x,2])) %>%
+      rename(time = date) %>% 
+      select(time, strategy_return_1_month) %>% 
+      mutate(strategy_return_1_month = strategy_return_1_month - 1) %>%
+      # add risk free rate
+      left_join(rf_usa) %>% 
+      mutate(strategy_return_1_month = strategy_return_1_month - rate_10_year) %>% 
+      select(-model, -rate_10_year) %>% 
+      ts_xts(),
+    c0 = 0, # added in x 
+    ope = 12, 
+    na.rm = T) %>% 
     suppressMessages()
   
   a2 <- confint(a1, 
@@ -389,11 +344,12 @@ sharpe_significance_rf <- function(x) {
 }
 
 sharpe_full_rf <- 
-  map(1:nrow(variations_fin_results), ~sharpe_significance_rf(.x)) %>% 
+  map(1:nrow(variations_fin_results), 
+      ~sharpe_significance_rf(.x)) %>% 
   reduce(bind_rows) 
 
-write.xlsx(sharpe_full_rf, file = "05_new_sharpes_rf.xlsx",
-           sheetName="01", append=TRUE)
+# write.xlsx(sharpe_full_rf, file = "05_new_sharpes_rf.xlsx",
+#            sheetName="01", append=TRUE)
 
 # SR EQUAL-WEIGHT BENCHMARK -------
 # calcuating real returns 
@@ -475,6 +431,5 @@ sharpe_equality_tests_rf <-
   map(1:nrow(variations_fin_results), ~robust_sharpes_rf(.x)) %>% 
   reduce(bind_rows)
 
-write.xlsx(sharpe_equality_tests_rf, file = "06_significance_sharpes_rf.xlsx",
-           sheetName="01", append=TRUE)
-
+# write.xlsx(sharpe_equality_tests_rf, file = "06_significance_sharpes_rf.xlsx",
+#            sheetName="01", append=TRUE)

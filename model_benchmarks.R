@@ -171,4 +171,3 @@ suppressMessages(
     ungroup() %>% 
     summarise_if(is.numeric, median)) %>% 
   print()
-

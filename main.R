@@ -2,12 +2,13 @@ library(readxl)
 library(Matrix)
 library(tsibble)
 library(tidyverse)
+library(patchwork)
 
 tic_all <- Sys.time()
 
 source("setup.R")
 
-read_from_rds <- FALSE
+read_from_rds <- TRUE
 
 if(read_from_rds){
   to_model_exploration <- readRDS("to_model_exploration.RDS")
@@ -25,6 +26,12 @@ source("model_xgboost_single.R")
 source("model_rf_single.R")
 source("model_stack_pooled.R")
 source("model_ensemble_pooled.R")
+source("model_benchmarks.R")
+source("model_mean.R")
+source("modeling_results.R")
+source("tables.R")
+source("thesis_graphs.R")
+source("financial_performance.R")
 source("accumulated_local_effects.R")
 
 if(exists("cl")){
@@ -58,16 +65,16 @@ preds_vs_actuals %>%
          MAPE = round(MAPE, 4)) %>% 
   arrange(MAPE)
 
-#   MAPE |  Min  | Model
-# 0.0584 |   NA  | MEAN
-# 0.0559 |   NA  | NAIVE
-# ------------------------------
-# 0.0360 | 430.8 | XGBoost
-# 0.0280 |  11.9 | Random Forest
-# 0.0284 |  11.9 | Elastic net
-# 0.0621 |   0.2 | Single ARIMA
-# 0.0287 |  71.0 | Single XGBoost
-# 0.0329 |  13.6 | Single Random Forest
-# 0.0435 |   NA  | Ensemble mean
-# 0.0433 |   NA  | Ensemble median
-# 0.0260 |  40.7 | Stack
+#  MAPE |  Min  | Model
+# 0.056 |   NA  | MEAN
+# 0.061 |   NA  | NAIVE
+# -----------------------------
+# 0.035 | 430.8 | XGBoost
+# 0.026 |  10.9 | Random Forest
+# 0.023 |  14.8 | Elastic net
+# 0.058 |   0.2 | Single ARIMA
+# 0.026 |  35.5 | Single XGBoost
+# 0.032 |   7.5 | Single Random Forest
+# 0.023 |   NA  | Ensemble mean
+# 0.022 |   NA  | Ensemble median
+# 0.024 |  16.9 | Stack

@@ -18,7 +18,7 @@ get_final_single_rf_model <- function(.x){
       filter(set == "test") %>% 
       pull(.row) %>% 
       as.integer())
-  
+
   rf_single_data <- make_splits(
     split_indices_rf_single, 
     to_model_rf_single_temp %>% 

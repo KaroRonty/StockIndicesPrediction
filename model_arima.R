@@ -3,7 +3,6 @@ to_model_arima_temp <- build.x(~ .,
                                contrasts = FALSE) %>% 
   as_tibble() %>% 
   add_column(date = to_model_mm$date) %>% 
-  # TODO
   mutate_if(is.numeric, ~ifelse(.x == 1000, NA, .x))
 
 model_data_arima_temp <- make_splits(split_indices, 
@@ -14,12 +13,12 @@ model_data_arima_temp <- make_splits(split_indices,
 model_training_arima_temp <- training(model_data_arima_temp)
 model_test_arima_temp <- testing(model_data_arima_temp)
 
-model_recipe_arima <- recipe(cagr_n_year ~ # FIXME
+model_recipe_arima <- recipe(cagr_n_year ~ 
                                cape + 
                                dividend_yield + 
-                               rate_10_year + # FIXME
-                               unemployment +
-                               s_rate_10_year +
+                               rate_10_year + 
+                               unemployment + 
+                               s_rate_10_year + 
                                cpi, 
                              data = model_training_arima_temp) %>% 
   step_knnimpute(cape,
@@ -40,14 +39,14 @@ to_model_arima <- model_recipe_arima %>%
 cp <- crossing(countries_to_predict, predictors)
 
 diffs <- map(1:nrow(cp), ~to_model_arima %>% 
-      filter(country == paste0(cp[.x, 1])) %>% 
-      select(paste0(cp[.x, 2])) %>%
-      as.matrix() %>% 
-      forecast::ndiffs(test = c("kpss")) %>% 
-      tibble(d = .,
-             Country = paste(cp[.x, 1]),
-             Predictor = paste(cp[.x, 2]))) %>% 
-      reduce(bind_rows)
+               filter(country == paste0(cp[.x, 1])) %>% 
+               select(paste0(cp[.x, 2])) %>%
+               as.matrix() %>% 
+               forecast::ndiffs(test = c("kpss")) %>% 
+               tibble(d = .,
+                      Country = paste(cp[.x, 1]),
+                      Predictor = paste(cp[.x, 2]))) %>% 
+  reduce(bind_rows)
 
 
 model_arima <- function(selected_country){
@@ -95,66 +94,56 @@ model_arima <- function(selected_country){
   
   list(model = model_training_arima %>% 
          model(arima = ARIMA(as.formula(
-           paste("log(cagr_n_year)", 
+           paste("cagr_n_year", 
                  "~", 
                  paste0(!!predictors[predictors %in% features_selected],
                         collapse = " + "),
                  # include differencing
                  "+ pdq(d = 1:5)")
-                 # + PDQ(D = 1:4)"
-                 ))),
+           # + PDQ(D = 1:4)"
+         ))),
        training = model_training_arima,
        leakage = model_leakage_arima,
        test = model_test_arima)
 }
 
-if(exists("cl")){
-  print("Starting ARIMA cluster...")
-  stopCluster(cl)
-  rm(cl)
-}
-
-cl <- makePSOCKcluster(parallel::detectCores())
-registerDoParallel(cl)
-
 # 27 sec
 tic_arima <- Sys.time()
-arima_model <- future_map(countries_to_predict,
-                          ~model_arima(.x))
+arima_model <- map(countries_to_predict,
+                   ~model_arima(.x))
 print(toc_arima <- Sys.time() - tic_arima)
 
-arima_fcast <- future_map(seq_len(length(arima_model)),
-                          ~arima_model %>% 
-                            pluck(.x) %>% 
-                            pluck(1) %>% 
-                            forecast(arima_model %>% 
-                                       pluck(.x) %>% 
-                                       pluck(4))) %>% 
+arima_fcast <- map(seq_len(length(arima_model)),
+                   ~arima_model %>% 
+                     pluck(.x) %>% 
+                     pluck(1) %>% 
+                     forecast(arima_model %>% 
+                                pluck(.x) %>% 
+                                pluck(4))) %>% 
   reduce(bind_rows)
 
-arima_fitted <- future_map(seq_len(length(arima_model)),
-                           ~arima_model %>% 
-                             pluck(.x) %>% 
-                             pluck(1) %>% 
-                             pull(arima) %>%
-                             pluck(1) %>%
-                             .$fit %>%
-                             .$est %>%
-                             .$.fitted) %>%
+arima_fitted <- map(seq_len(length(arima_model)),
+                    ~arima_model %>% 
+                      pluck(.x) %>% 
+                      pluck(1) %>% 
+                      pull(arima) %>%
+                      pluck(1) %>%
+                      .$fit %>%
+                      .$est %>%
+                      .$.fitted) %>%
   reduce(c)
 
-
-arima_pred <- arima_fcast %>% 
+arima_single_pred <- arima_fcast %>% 
   pull(.mean)
 
-arima_actual <- future_map(seq_len(length(arima_model)),
-                           ~arima_model %>% 
-                             pluck(.x) %>% 
-                             pluck(4) %>% 
-                             pull(cagr_n_year)) %>% 
+arima_actual <- map(seq_len(length(arima_model)),
+                    ~arima_model %>% 
+                      pluck(.x) %>% 
+                      pluck(4) %>% 
+                      pull(cagr_n_year)) %>% 
   reduce(c)
 
-arima_training_to_plot <- future_map(
+arima_training_to_plot <- map(
   seq_len(length(arima_model)),
   ~arima_model %>% 
     pluck(.x) %>% 
@@ -162,7 +151,7 @@ arima_training_to_plot <- future_map(
     select(country, date, cagr_n_year)) %>% 
   reduce(bind_rows)
 
-arima_leakage_to_plot <- future_map(
+arima_leakage_to_plot <- map(
   seq_len(length(arima_model)),
   ~arima_model %>% 
     pluck(.x) %>% 
@@ -170,7 +159,7 @@ arima_leakage_to_plot <- future_map(
     select(country, date, cagr_n_year)) %>% 
   reduce(bind_rows)
 
-arima_actual_to_plot <- future_map(
+arima_actual_to_plot <- map(
   seq_len(length(arima_model)),
   ~arima_model %>% 
     pluck(.x) %>% 
@@ -184,38 +173,48 @@ pred_plot_arima <- arima_fcast %>%
   autolayer(arima_leakage_to_plot, cagr_n_year, color = "gray") +
   autolayer(arima_actual_to_plot, cagr_n_year, color = "black") +
   facet_wrap(~country) +
-  coord_cartesian(ylim = c(0.75,1.5)) +
+  coord_cartesian(ylim = c(0.75, 1.5)) +
   labs(title = "ARIMA",
        x = "Date",
        y = cagr_name) +
   theme_minimal() +
   theme(legend.position = "none")
 
+pred_vs_actual_training_arima <- arima_training_to_plot %>% 
+  as_tibble() %>% 
+  rename(actual = cagr_n_year) %>% 
+  mutate(arima_single_pred = arima_fitted) %>% 
+  suppressMessages()
+
+training_preds_vs_actuals <- training_preds_vs_actuals %>% 
+  left_join(pred_vs_actual_training_arima)
+
 pred_vs_actual_arima <- arima_actual_to_plot %>% 
   as_tibble() %>% 
   rename(actual = cagr_n_year) %>% 
   inner_join(arima_fcast %>% 
                as_tibble() %>% 
-               select(date, country, arima_pred = .mean)) %>% 
+               select(date, country, arima_single_pred = .mean)) %>% 
   suppressMessages()
 
 preds_vs_actuals <- preds_vs_actuals %>% 
   left_join(pred_vs_actual_arima)
-  
 
-suppressMessages(
-  pred_vs_actual_arima %>% 
-    inner_join(mean_predictions) %>% 
-    group_by(country) %>% 
-    summarise(arima_mape = median(abs(((actual) - arima_pred) / actual)),
-              mean_mape = median(abs(((actual) - mean_prediction) / actual))))
 
 suppressMessages(
   pred_vs_actual_arima %>% 
     inner_join(mean_predictions) %>% 
     group_by(country) %>% 
     summarise(
-      arima_mape = median(abs(((actual) - arima_pred) / actual)),
+      arima_mape = median(abs(((actual) - arima_single_pred) / actual)),
+      mean_mape = median(abs(((actual) - mean_prediction) / actual))))
+
+suppressMessages(
+  pred_vs_actual_arima %>% 
+    inner_join(mean_predictions) %>% 
+    group_by(country) %>% 
+    summarise(
+      arima_mape = median(abs(((actual) - arima_single_pred) / actual)),
       mean_mape = median(abs(((actual) - mean_prediction) / actual))) %>%
     ungroup() %>% 
     summarise_if(is.numeric, median)) %>% 
@@ -225,100 +224,103 @@ suppressMessages(
 # VALIDATION -----
 
 # differencing only applied to LM for AUSTRALIA 
-map(1:8, ~arima_model[[.x]] %>% # FIXME: delete SPAIN
-      .$model %>% 
-      .$arima %>% 
-      .[[1]] %>% 
-      .$fit %>% 
-      .$par) %>% 
-  mutate(country = arima_model[[.x]] %>% .$model %>% .$country) %>% 
-  reduce(bind_rows) %>% 
-  
+# map(seq_along(countries_to_predict), 
+#     ~arima_model[[.x]] %>%
+#       .$model %>% 
+#       .$arima %>% 
+#       .[[1]] %>% 
+#       .$fit %>% 
+#       .$par) %>% 
+#   mutate(country = arima_model[[.x]] %>% .$model %>% .$country) %>% 
+#   reduce(bind_rows) %>% 
+#   
+#   
+#   map(seq_along(countries_to_predict),
+#       ~arima_model[[.x]] %>% 
+#         .$model %>% 
+#         .$arima) %>% 
+#   reduce(c) %>% 
+#   tibble(models = .,
+#          country = map(seq_along(countries_to_predict), 
+#                        ~arima_model[[.x]] %>% .$model %>% 
+#                          .$country) %>%
+#            reduce(c))
+# 
+# # checking residuals of ARIMA models
+# # CANADA; USA; UK; NETHERLANDS; GERMANY; SWITZERLAND are not white-noise
+# # including mandatory d or D does not change the white-noise in the series
+# 
+# 
+# resid_data <- map_dfr(seq_along(countries_to_predict), 
+#                       ~arima_model %>% 
+#                         pluck(.x) %>% 
+#                         .$model %>% 
+#                         .$arima %>% 
+#                         pluck(1) %>% 
+#                         residuals() %>% 
+#                         mutate(country = arima_model %>% 
+#                                  pluck(.x) %>% 
+#                                  .$model %>% 
+#                                  .$country) %>% 
+#                         as_tibble())
+# 
+# resid_data %>% 
+#   ggplot(aes(date, .resid)) +
+#   geom_line() +
+#   facet_wrap(~country) +
+#   labs(title = "All countries show non white-noise typical residuals") +
+#   theme_bw()
+# 
+# acf_data <- map_dfr(seq_along(countries_to_predict), 
+#                     ~arima_model %>% 
+#                       pluck(.x) %>%
+#                       pluck(2) %>% 
+#                       feasts::PACF() %>% 
+#                       as_tibble()) %>% 
+#   left_join(
+#     map_dfr(seq_along(countries_to_predict), 
+#             ~arima_model %>% 
+#               pluck(.x) %>%
+#               pluck(2) %>% 
+#               feasts::ACF() %>% 
+#               as_tibble())
+#   )
+# 
+# acf_data %>% 
+#   select(-pacf) %>% 
+#   ggplot(aes(lag, acf)) +
+#   geom_col(width = 0.1) +
+#   facet_wrap(~country) +
+#   labs(title = "ACF Analysis shows considerable autocorrelation left in the residuals") +
+#   theme_bw()
+# 
+# acf_data %>% 
+#   select(-acf) %>% 
+#   ggplot(aes(lag, pacf)) +
+#   geom_col(width = 0.1) +
+#   facet_wrap(~country) +
+#   labs(title = "PACF shows strong autocorrelation effect of previously predicted CAGR lag") +
+#   theme_bw()
+# 
+# # significance of params
+sig_arima_auto <- map_dfr(seq_along(countries_to_predict),
+                          ~arima_model[[.x]] %>%
+                            .$model %>%
+                            .$arima %>%
+                            pluck(1) %>%
+                            .$fit %>%
+                            .$par %>%
+                            mutate(country = arima_model[[.x]] %>%
+                                     .$model %>%
+                                     .$country))
 
-map(1:8, ~arima_model[[.x]] %>% 
-      .$model %>% 
-      .$arima) %>% 
-  reduce(c) %>% 
-  tibble(models = .,
-         country = map(1:8, ~arima_model[[.x]] %>% .$model %>% 
-                         .$country) %>%
-           reduce(c))
-
-
-
-# checking residuals of ARIMA models
-# CANADA; USA; UK; NETHERLANDS; GERMANY; SPAIN; SWITZERLAND are not white-noise
-# including mandatory d or D does not change the white-noise in the series
-
-
-resid_data <- map_dfr(1:8, ~arima_model %>% 
-  pluck(.x) %>% 
-  .$model %>% 
-  .$arima %>% 
-  pluck(1) %>% 
-  residuals() %>% 
-  mutate(country = arima_model %>% 
-           pluck(.x) %>% 
-           .$model %>% 
-           .$country) %>% 
-  as_tibble())
-
-resid_data %>% 
-  ggplot(aes(date, .resid)) +
-  geom_line() +
-  facet_wrap(~country) +
-  labs(title = "All countries show non white-noise typical residuals") +
-  theme_bw()
-
-acf_data <- map_dfr(1:8, ~arima_model %>% 
-                      pluck(.x) %>%
-                      pluck(2) %>% 
-                      feasts::PACF() %>% 
-                      as_tibble()) %>% 
-  left_join(
-    map_dfr(1:8, ~arima_model %>% 
-              pluck(.x) %>%
-              pluck(2) %>% 
-              feasts::ACF() %>% 
-              as_tibble())
-  )
-  
-acf_data %>% 
-  select(-pacf) %>% 
-  ggplot(aes(lag, acf)) +
-  geom_col(width = .1) +
-  facet_wrap(~country) +
-  labs(title = "ACF Analysis shows considerable autocorrelation left in the residuals") +
-  theme_bw()
-
-acf_data %>% 
-  select(-acf) %>% 
-  ggplot(aes(lag, pacf)) +
-  geom_col(width = .1) +
-  facet_wrap(~country) +
-  labs(title = "PACF shows strong autocorrelation effect of previously predicted CAGR lag") +
-  theme_bw()
-
-# significance of params
-sig_arima_auto <- map_dfr(1:8, ~arima_model[[.x]] %>% 
-  .$model %>% 
-  .$arima %>% 
-  pluck(1) %>% 
-  .$fit %>% 
-  .$par %>% 
-  mutate(country = arima_model[[.x]] %>% 
-           .$model %>% 
-           .$country))
-
-sig_arima_auto %>% 
-  filter(term %in% c("ar1", "ar2", "sar1", "sar2", "ma1", "sma1")) %>% 
+sig_arima_auto %>%
+  filter(term %in% c("ar1", "ar2", "sar1", "sar2", "ma1", "sma1")) %>%
   ggplot(aes(country, p.value)) +
   geom_col() +
-  coord_cartesian(ylim = c(0,0.05)) +
+  coord_cartesian(ylim = c(0, 0.05)) +
   facet_wrap(~term, scales = "free") +
   labs(title = "Significance Analysis of d = 1 forced auto.ARIMA models",
        subtitle = "Coefficients are less significant but also overall less prevalent because of the differencing") +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))

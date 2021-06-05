@@ -1,26 +1,30 @@
 library(xlsx)
 library(multDM)
 
-preds_vs_actuals <-  preds_vs_actuals %>% filter(country %in% countries_to_predict)
+preds_vs_actuals <-  preds_vs_actuals %>% 
+  filter(country %in% countries_to_predict)
 
 # DATA SET-UP
-model_set <- c("xgboost_pred", "rf_pred", "elastic_pred", "arima_single_pred", "xgboost_single_pred", "rf_single_pred", 
+model_set <- c("xgboost_pred", "rf_pred", "elastic_pred", 
+               "arima_single_pred", "xgboost_single_pred", "rf_single_pred", 
                "stack_pred", "ensemble_mean_pred", "ensemble_median_pred", 
-               "mean_prediction", "naive_prediction")
+               "mean_pred", "naive_pred")
 
-model_acc <- map(model_set, ~preds_vs_actuals %>% 
-      select(date, country, actual, !!paste(.x)) %>% 
-      filter(country %in% countries_to_predict) %>% 
-      group_by(country) %>% 
-      summarise(
-        MAPE = median(abs(((actual) - !!as.name(paste(.x))) / actual)),
-        MAE = mean(abs(actual - !!as.name(paste(.x)))),
-        RMSE = sqrt(mean((!!as.name(paste(.x)) - actual)^2))) %>% 
-      mutate(model = !!paste(.x)) %>% 
-      pivot_longer(cols = c(MAPE, MAE, RMSE),
-                   names_to = "errors",
-                   values_to = "value") %>% 
-      suppressMessages()) %>% 
+model_acc <- map(
+  model_set, 
+  ~preds_vs_actuals %>% 
+    select(date, country, actual, !!paste(.x)) %>% 
+    filter(country %in% countries_to_predict) %>% 
+    group_by(country) %>% 
+    summarise(
+      MAPE = median(abs(((actual) - !!as.name(paste(.x))) / actual)),
+      MAE = mean(abs(actual - !!as.name(paste(.x)))),
+      RMSE = sqrt(mean((!!as.name(paste(.x)) - actual)^2))) %>% 
+    mutate(model = !!paste(.x)) %>% 
+    pivot_longer(cols = c(MAPE, MAE, RMSE),
+                 names_to = "errors",
+                 values_to = "value") %>% 
+    suppressMessages()) %>% 
   reduce(bind_rows)
 
 # BASE-MODEL ACCURACY + AVERAGE ACCURACY PER MODEL -----
@@ -30,7 +34,7 @@ model_acc %>%
               names_from = model) %>% 
   filter(errors == "MAPE") %>% 
   select(-stack_pred, -ensemble_mean_pred, -ensemble_median_pred, 
-         -mean_prediction, -naive_prediction, -errors) %>% 
+         -mean_pred, -naive_pred, -errors) %>% 
   bind_rows(
     # AVERAGE MAPE PER MODEL
     model_acc %>% 
@@ -40,9 +44,9 @@ model_acc %>%
       pivot_wider(values_from = median_MAPE,
                   names_from = model) %>% 
       select(-stack_pred, -ensemble_mean_pred, -ensemble_median_pred, 
-             -mean_prediction, -naive_prediction) %>% 
+             -mean_pred, -naive_pred) %>% 
       mutate(country = "MEDIAN")
-    ) %>% 
+  ) %>% 
   rename("Country" = country,
          "XGB_pool" = xgboost_pred,
          "RF_pool" = rf_pred,
@@ -59,7 +63,7 @@ model_acc %>%
   pivot_wider(values_from = median,
               names_from = errors) %>% 
   arrange(MAPE) 
-  
+
 
 model_acc %>% 
   group_by(errors, country) %>% 
@@ -105,24 +109,24 @@ model_acc %>%
          "Stacking" = stack_pred,
          "Mean_ens" = ensemble_mean_pred,
          "Median_ens" = ensemble_median_pred,
-         "Mean" = mean_prediction,
-         "Naive" = naive_prediction) %>% 
-  mutate_at(c("Country"), funs(recode(., !!!key))) %>% 
-  write.xlsx(., file = "01_MAE across models.xlsx",
-           sheetName="01", append=TRUE)
+         "Mean" = mean_pred,
+         "Naive" = naive_pred) %>% 
+  mutate_at(c("Country"), funs(recode(., !!!key)))# %>% 
+# write.xlsx(., file = "01_MAE across models.xlsx",
+#          sheetName="01", append=TRUE)
 
 
 # BASE & META-MODEL: ACCURACY INCREASE BY MODEL, OVER COUNTRIES, AND COMPARED TO BENCHMARK -----
 model_acc %>% 
   pivot_wider(names_from = model,
               values_from = value) %>%
-  select(-naive_prediction) %>%
+  select(-naive_pred) %>%
   pivot_longer(cols = c(3:11),
                names_to = "models",
                values_to = "value") %>% 
   ungroup() %>% 
   group_by(country, errors, models) %>% 
-  summarise(increase = (1 - (value / mean_prediction))) %>% # previously mean_pred / value
+  summarise(increase = (1 - (value / mean_pred))) %>% # previously mean_pred / value
   pivot_wider(names_from = models,
               values_from = increase) %>% 
   ungroup() %>% 
@@ -134,7 +138,7 @@ model_acc %>%
     model_acc %>% 
       pivot_wider(names_from = model,
                   values_from = value) %>% 
-      select(-naive_prediction) %>%
+      select(-naive_pred) %>%
       pivot_longer(cols = c(3:11),
                    names_to = "models",
                    values_to = "value") %>%
@@ -142,7 +146,7 @@ model_acc %>%
       ungroup() %>% 
       group_by(models) %>% 
       summarise(value = median(value),
-                increase = median((1 - (value / mean_prediction)))) %>%  # previously mean_pred / value
+                increase = median((1 - (value / mean_pred)))) %>%  # previously mean_pred / value
       select(models, increase) %>% 
       pivot_wider(names_from = models,
                   values_from = increase) %>% 
@@ -150,33 +154,33 @@ model_acc %>%
       summarise_if(is.numeric, median) %>% 
       mutate_if(is.numeric, round, 3) %>% 
       mutate(country = "MEDIAN")) %>% 
-    rename("Country" = country,
-           "XGB_pool" = xgboost_pred,
-           "RF_pool" = rf_pred,
-           "EN_pool" = elastic_pred,
-           "ARIMA" = arima_single_pred,
-           "XGB_s" = xgboost_single_pred,
-           "RF_s" = rf_single_pred,
-           "Stacking" = stack_pred,
-           "Mean_ens" = ensemble_mean_pred,
-           "Median_ens" = ensemble_median_pred) %>% 
+  rename("Country" = country,
+         "XGB_pool" = xgboost_pred,
+         "RF_pool" = rf_pred,
+         "EN_pool" = elastic_pred,
+         "ARIMA" = arima_single_pred,
+         "XGB_s" = xgboost_single_pred,
+         "RF_s" = rf_single_pred,
+         "Stacking" = stack_pred,
+         "Mean_ens" = ensemble_mean_pred,
+         "Median_ens" = ensemble_median_pred) %>% 
   mutate_at(c("Country"), funs(recode(., !!!key))) %>% 
   mutate_if(is.numeric, funs(scales::percent(., accuracy = .1))) %>% 
-  select(Country, XGB_pool, RF_pool, EN_pool, ARIMA, XGB_s, RF_s, Stacking, Mean_ens, Median_ens) %>% 
-  write.xlsx(., file = "02_rmse_inc_relative.xlsx",
-             sheetName="01", append=TRUE)
+  select(Country, XGB_pool, RF_pool, EN_pool, ARIMA, XGB_s, RF_s, Stacking, Mean_ens, Median_ens)# %>% 
+# write.xlsx(., file = "02_rmse_inc_relative.xlsx",
+#            sheetName="01", append=TRUE)
 
 
 # CORRELATION TABLE -----
 
-corrr_models <- map(1:8, ~preds_vs_actuals %>% 
-      filter(country == as.character(countries_to_predict[.x])) %>% 
-      select(-mean_prediction, -naive_prediction, -date, -country) %>% 
-      corrr::correlate() %>% 
-      slice(1) %>% 
-      select(-term, -actual) %>% 
-      mutate(country = as.character(countries_to_predict[.x])) %>% 
-      relocate(country, .before = xgboost_pred)) %>% 
+corrr_models <- map(seq_along(countries_to_predict), ~preds_vs_actuals %>% 
+                      filter(country == as.character(countries_to_predict[.x])) %>% 
+                      select(-mean_pred, -naive_pred, -date, -country) %>% 
+                      corrr::correlate() %>% 
+                      slice(1) %>% 
+                      select(-term, -actual) %>% 
+                      mutate(country = as.character(countries_to_predict[.x])) %>% 
+                      relocate(country, .before = xgboost_pred)) %>% 
   reduce(bind_rows) 
 
 corrr_models %>% 
@@ -194,7 +198,7 @@ corrr_models %>%
 base_models <- c("xgboost_pred", "rf_pred", "elastic_pred", 
                  "arima_single_pred", "xgboost_single_pred", "rf_single_pred", 
                  "stack_pred", "ensemble_mean_pred", "ensemble_median_pred")
-base_models2 <- c("mean_prediction")
+base_models2 <- c("mean_pred")
 horizons <- c(1,12,60,120)
 
 mc <- crossing(countries_to_predict, base_models, base_models2, horizons)
@@ -246,10 +250,3 @@ dm_test %>% filter(p.value > 0.001 & p.value <= 0.01,
 # ***
 dm_test %>% filter(p.value <= 0.001,
                    h == 60) %>% View()
-
-
-
-
-
-
-  
